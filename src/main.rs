@@ -9,7 +9,7 @@ use esp_hal::{
     clock::ClockControl,
     delay::Delay,
     gpio::{Io, Level, Output},
-    peripherals::Peripherals,
+    peripherals::{self, Peripherals},
     prelude::*,
     psram,
     spi::{
@@ -46,9 +46,9 @@ fn main() -> ! {
 
     {
         log::info!("========== Placing vector in PSRAM ==========");
-        let mut large_vec: Vec<u32> = Vec::with_capacity(8000 * 1024 / 4);
+        let mut large_vec: Vec<u32> = Vec::with_capacity(500 * 1024 / 4);
 
-        for i in 0..(8000 * 1024 / 4) {
+        for i in 0..(500 * 1024 / 4) {
             large_vec.push((i & 0xff) as u32);
         }
 
@@ -58,6 +58,8 @@ fn main() -> ! {
     }
 
     let io = Io::new(peripherals.GPIO, peripherals.IO_MUX);
+
+    let mut pmic_en = Output::new(io.pins.gpio9, Level::High);
 
     let mut display = {
         let rst = Output::new(io.pins.gpio13, Level::High);
@@ -69,7 +71,7 @@ fn main() -> ! {
         let data2 = io.pins.gpio16;
         let data3 = io.pins.gpio12;
 
-        let spi = Spi::new_half_duplex(peripherals.SPI2, 30.MHz(), SpiMode::Mode0, &clocks)
+        let spi = Spi::new_half_duplex(peripherals.SPI3, 36.MHz(), SpiMode::Mode0, &clocks)
             .with_pins(
                 Some(sclk),
                 Some(data0),
@@ -88,6 +90,9 @@ fn main() -> ! {
 
     loop {
         log::info!("Hello world!");
-        delay.delay(500.millis());
+        delay.delay(5000.millis());
+        for _ in 0..2 {
+            display.init().ok();
+        }
     }
 }
