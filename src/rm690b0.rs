@@ -132,7 +132,7 @@ where
         //self.write_command_u8(0x36, 0b01100000, None)?;
         self.write_command_u8(
             0x36,
-            RM690B0_MADCTL_RGB | RM690B0_MADCTL_MV | RM690B0_MADCTL_MX | RM690B0_MADCTL_ML,
+            RM690B0_MADCTL_RGB | RM690B0_MADCTL_MV | RM690B0_MADCTL_MX,
             None,
         )?;
 
