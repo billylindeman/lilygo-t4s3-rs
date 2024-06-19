@@ -53,7 +53,7 @@ pub enum DisplayCommand {
     ReadDisplayBrightness = 0x5200,  // Read Display Brightness
     WriteDisplayControl = 0x5300,    // Write Control Display
     ReadDisplayControl = 0x5400,     // Read Control Display
-
+    SetDisplayMode = 0xC200,
     PageSet = 0xFE00,
 }
 
@@ -121,14 +121,14 @@ where
         //{0x29, {0x00}, 0x20},           //Display on delay_ms(10);
         //{0x51, {0xFF}, 0x01},           //Write Display Brightness  MAX_VAL=0XFF
 
-        self.write_command(DisplayCommand::PageSet, &[0x20])?; //SET PAGE
+        self.write_command(DisplayCommand::PageSet, &[0x20])?; //SET PAGE (MFG Command?)
         self.write_command(0x2600u16, &[0x0A])?; //MIPI OFF
         self.write_command(0x2400u16, &[0x80])?; //SPI write RAM
         self.write_command(0x5A00u16, &[0x51])?; // 230918:SWIRE FOR BV6804
         self.write_command(0x5B00u16, &[0x2E])?; // 230918:SWIRE FOR BV6804
-        self.write_command(DisplayCommand::PageSet, &[0x00])?; //SET PAGE
+        self.write_command(DisplayCommand::PageSet, &[0x00])?; //SET PAGE (User Command)
         self.write_command(DisplayCommand::InterfacePixelFormat, &[0x55])?; //Interface Pixel Format    16bit/pixel
-        self.write_command(0xC200u16, &[])?; //delay_ms(10);
+        self.write_command(DisplayCommand::SetDisplayMode, &[0x00])?;
         self.delay.delay_ms(10);
         self.write_command(DisplayCommand::TearingEffectLineOn, &[])?; //TE ON
         self.write_command(DisplayCommand::WriteDisplayBrightness, &[])?; //Write Display Brightness  MAX_VAL=0XFF
@@ -137,9 +137,7 @@ where
         self.write_command(DisplayCommand::DisplayOn, &[])?; //Display on delay_ms(10);
         self.delay.delay_ms(10);
         self.write_command(DisplayCommand::WriteDisplayBrightness, &[0xFF])?; //Write Display Brightness  MAX_VAL=0XFF
-
         self.write_command(DisplayCommand::NormalDisplayModeOn, &[])?;
-        //self.write_command(DisplayCommand::AllPixelsOn, &[])?;
 
         self.write_command(
             DisplayCommand::MemoryAccessControl,
@@ -250,8 +248,6 @@ where
         for y in start.y..end.y {
             for x in start.x..end.x {
                 let idx = ((x + (y * size.width as i32)) * 2) as usize;
-                //log::info!("x={}, y={}, idx={}", x, y, idx);
-
                 chunk.push(self.buf[idx]);
                 chunk.push(self.buf[idx + 1]);
 
@@ -265,8 +261,6 @@ where
                             &chunk,
                         )
                         .map_err(|_| anyhow::format_err!("spi error"))?;
-
-                    //log::info!("sent chunk {}", chunk.len());
                     chunk = Vec::with_capacity(64);
                 }
             }
@@ -344,20 +338,15 @@ where
                 self.buf[idx + 1] = b;
             }
         }
-        if start.x % 2 == 1 {
-            start.x -= 1;
-        }
-        if start.y % 2 == 1 {
-            start.y -= 1;
-        }
-        if end.x % 2 == 1 {
-            end.x += 1;
-        }
-        if end.y % 2 == 1 {
-            end.y += 1;
-        }
+
+        // column addresses must be divisible 2
+        start.x -= start.x % 2;
+        start.y -= start.x % 2;
+        end.x += end.x % 2;
+        end.x += end.x % 2;
 
         self.dirty.push((start, end));
+        self.flush_dirty().ok();
         Ok(())
     }
 }

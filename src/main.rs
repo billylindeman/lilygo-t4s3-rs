@@ -3,27 +3,17 @@
 
 extern crate alloc;
 
-use alloc::vec::Vec;
 use core::fmt::Write;
 use embedded_graphics::{
-    draw_target::DrawTargetExt,
-    geometry::{Dimensions, OriginDimensions, Point, Size},
-    mono_font::iso_8859_14::FONT_6X10,
-    pixelcolor::{Rgb565, Rgb888},
-    primitives::{Rectangle, StyledDrawable},
-    text::{Text, TextStyleBuilder},
-};
-use embedded_plots::{
-    axis::Scale,
-    curve::{Curve, PlotPoint},
-    single_plot::SinglePlot,
+    draw_target::{DrawTarget, DrawTargetExt},
+    pixelcolor::Rgb888,
 };
 use esp_backtrace as _;
 use esp_hal::{
     clock::ClockControl,
     delay::Delay,
     gpio::{Io, Level, Output},
-    peripherals::{self, Peripherals},
+    peripherals::Peripherals,
     prelude::*,
     psram,
     spi::{
@@ -91,53 +81,15 @@ fn main() -> ! {
     display.reset();
     display.init().expect("error initializing display");
 
-    {
-        use embedded_graphics::{
-            mono_font::{ascii::FONT_10X20, MonoTextStyle},
-            text::Text,
-        };
+    let converted = display.color_converted::<Rgb888>();
+    let mut console = Console::on_frame_buffer(converted);
 
-        use embedded_graphics::{
-            pixelcolor::Rgb565,
-            prelude::*,
-            primitives::{PrimitiveStyleBuilder, Rectangle},
-        };
-
-        let mut x = 0;
-        let mut y = 0;
-
-        let mut data = alloc::vec![
-            PlotPoint { x: 0, y: 0 },
-            PlotPoint { x: 1, y: 2 },
-            PlotPoint { x: 2, y: 2 },
-            PlotPoint { x: 3, y: 0 },
-        ];
-
-        loop {
-            let style = PrimitiveStyleBuilder::new()
-                .fill_color(Rgb565::BLACK)
-                .build();
-            Rectangle::new(Point::new(0, 0), display.size())
-                .into_styled(style)
-                .draw(&mut display)
-                .unwrap();
-
-            let curve = Curve::from_data(data.as_slice());
-
-            let plot = SinglePlot::new(&curve, Scale::RangeFraction(3), Scale::RangeFraction(2))
-                .into_drawable(Point { x: 50, y: 10 }, Point { x: 430, y: 250 })
-                .set_color(RgbColor::WHITE)
-                .set_text_color(RgbColor::WHITE);
-
-            plot.draw(&mut display).unwrap();
-
-            display.flush_dirty().ok();
-
-            x += 1;
-            y += x % 3;
-
-            data.push(PlotPoint { x, y });
-            delay.delay_millis(100);
-        }
+    let mut i = 0;
+    loop {
+        console
+            .write_str(&alloc::format!("HELLO WORLD RUST {} \n ", i))
+            .unwrap();
+        i += 1;
+        delay.delay_millis(100);
     }
 }
