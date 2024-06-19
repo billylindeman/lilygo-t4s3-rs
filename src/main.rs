@@ -6,12 +6,15 @@ extern crate alloc;
 use core::fmt::Write;
 use embedded_graphics::{
     draw_target::{DrawTarget, DrawTargetExt},
-    pixelcolor::Rgb888,
+    pixelcolor::{Rgb565, Rgb888, RgbColor},
 };
+use embedded_hal::delay::DelayNs;
 use esp_backtrace as _;
 use esp_hal::{
     clock::ClockControl,
     delay::Delay,
+    dma::{Dma, DmaPriority},
+    dma_buffers,
     gpio::{Io, Level, Output},
     peripherals::Peripherals,
     prelude::*,
@@ -50,6 +53,7 @@ fn main() -> ! {
 
     esp_println::logger::init_logger_from_env();
 
+    let dma = Dma::new(peripherals.DMA);
     let io = Io::new(peripherals.GPIO, peripherals.IO_MUX);
 
     let mut _pmic_en = Output::new(io.pins.gpio9, Level::High);
@@ -64,7 +68,10 @@ fn main() -> ! {
         let data2 = io.pins.gpio16;
         let data3 = io.pins.gpio12;
 
-        let spi = Spi::new_half_duplex(peripherals.SPI3, 80.MHz(), SpiMode::Mode0, &clocks)
+        let dma_channel = dma.channel0;
+        let (tx_buffer, mut tx_descriptors, rx_buffer, mut rx_descriptors) = dma_buffers!(32000);
+
+        let spi = Spi::new_half_duplex(peripherals.SPI3, 300.MHz(), SpiMode::Mode0, &clocks)
             .with_pins(
                 Some(sclk),
                 Some(data0),
@@ -73,6 +80,12 @@ fn main() -> ! {
                 Some(data3),
                 Some(cs),
             );
+        //.with_dma(dma_channel.configure(
+        //    false,
+        //    &mut tx_descriptors,
+        //    &mut rx_descriptors,
+        //    DmaPriority::Priority0,
+        //));
 
         rm690b0::RM690B0::new(delay.clone(), spi, rst)
     };
@@ -81,15 +94,40 @@ fn main() -> ! {
     display.reset();
     display.init().expect("error initializing display");
 
-    let converted = display.color_converted::<Rgb888>();
-    let mut console = Console::on_frame_buffer(converted);
+    //let converted = display.color_converted::<Rgb888>();
+    //let mut console = Console::on_frame_buffer(converted);
 
-    let mut i = 0;
+    //let mut i = 0;
+    //loop {
+    //    console
+    //        .write_str(&alloc::format!("HELLO WORLD RUST {} \n ", i))
+    //        .unwrap();
+    //    i += 1;
+    //    delay.delay_millis(100);
+    //}
+    let mut flip = false;
     loop {
-        console
-            .write_str(&alloc::format!("HELLO WORLD RUST {} \n ", i))
-            .unwrap();
-        i += 1;
-        delay.delay_millis(100);
+        use embedded_graphics::{
+            pixelcolor::Rgb565,
+            prelude::*,
+            primitives::{PrimitiveStyleBuilder, Rectangle},
+        };
+
+        // Rectangle with red 3 pixel wide stroke and green fill with the top left corner at (30, 20) and
+        // a size of (10, 15)
+        let style = PrimitiveStyleBuilder::new()
+            .fill_color(match flip {
+                true => Rgb565::GREEN,
+                false => Rgb565::BLUE,
+            })
+            .build();
+
+        Rectangle::new(Point::new(0, 0), display.size())
+            .into_styled(style)
+            .draw(&mut display)
+            .ok();
+        flip = !flip;
+        display.flush_full().ok();
+        delay.delay_millis(50);
     }
 }

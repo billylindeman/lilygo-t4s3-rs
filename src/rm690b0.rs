@@ -8,7 +8,7 @@ use embedded_graphics::{
 use embedded_hal::delay::DelayNs;
 use embedded_hal::digital::OutputPin;
 use esp_hal::spi::{
-    master::{Address, Command, HalfDuplexReadWrite, Spi},
+    master::{dma::SpiDma, Address, Command, HalfDuplexReadWrite, Spi},
     SpiDataMode, SpiMode,
 };
 
@@ -63,10 +63,45 @@ impl From<DisplayCommand> for u16 {
     }
 }
 
+pub trait SpiWrite {
+    fn write_command<C: Copy + Into<u16>>(&mut self, cmd: C, param: &[u8]) -> Result<()>;
+    fn write_pixels(&mut self, chunk: &[u8]) -> Result<()>;
+}
+
+impl<SPI> SpiWrite for SPI
+where
+    SPI: esp_hal::spi::master::HalfDuplexReadWrite,
+{
+    fn write_command<C: Copy + Into<u16>>(&mut self, cmd: C, mut param: &[u8]) -> Result<()> {
+        self.write(
+            SpiDataMode::Single,
+            Command::Command8(0x02, SpiDataMode::Single),
+            Address::Address24(cmd.into() as u32, SpiDataMode::Single),
+            0,
+            &mut param,
+        )
+        .map_err(|_| anyhow::format_err!("spi error"))?;
+
+        Ok(())
+    }
+
+    fn write_pixels(&mut self, chunk: &[u8]) -> Result<()> {
+        self.write(
+            SpiDataMode::Quad,
+            Command::Command8(0x12, SpiDataMode::Single),
+            Address::Address24(0x3C00, SpiDataMode::Quad),
+            0,
+            &chunk,
+        )
+        .map_err(|_| anyhow::format_err!("spi error"))?;
+        Ok(())
+    }
+}
+
 pub struct RM690B0<D, SPI, RST>
 where
     D: DelayNs,
-    SPI: esp_hal::spi::master::HalfDuplexReadWrite,
+    SPI: SpiWrite,
     RST: OutputPin,
 {
     delay: D,
@@ -78,7 +113,7 @@ where
 impl<D, SPI, RST> RM690B0<D, SPI, RST>
 where
     D: DelayNs,
-    SPI: esp_hal::spi::master::HalfDuplexReadWrite,
+    SPI: SpiWrite,
     RST: OutputPin,
 {
     pub fn new(delay: D, spi: SPI, rst: RST) -> Self {
@@ -121,25 +156,31 @@ where
         //{0x29, {0x00}, 0x20},           //Display on delay_ms(10);
         //{0x51, {0xFF}, 0x01},           //Write Display Brightness  MAX_VAL=0XFF
 
-        self.write_command(DisplayCommand::PageSet, &[0x20])?; //SET PAGE (MFG Command?)
-        self.write_command(0x2600u16, &[0x0A])?; //MIPI OFF
-        self.write_command(0x2400u16, &[0x80])?; //SPI write RAM
-        self.write_command(0x5A00u16, &[0x51])?; // 230918:SWIRE FOR BV6804
-        self.write_command(0x5B00u16, &[0x2E])?; // 230918:SWIRE FOR BV6804
-        self.write_command(DisplayCommand::PageSet, &[0x00])?; //SET PAGE (User Command)
-        self.write_command(DisplayCommand::InterfacePixelFormat, &[0x55])?; //Interface Pixel Format    16bit/pixel
-        self.write_command(DisplayCommand::SetDisplayMode, &[0x00])?;
+        self.spi.write_command(DisplayCommand::PageSet, &[0x20])?; //SET PAGE (MFG Command?)
+        self.spi.write_command(0x2600u16, &[0x0A])?; //MIPI OFF
+        self.spi.write_command(0x2400u16, &[0x80])?; //SPI write RAM
+        self.spi.write_command(0x5A00u16, &[0x51])?; // 230918:SWIRE FOR BV6804
+        self.spi.write_command(0x5B00u16, &[0x2E])?; // 230918:SWIRE FOR BV6804
+        self.spi.write_command(DisplayCommand::PageSet, &[0x00])?; //SET PAGE (User Command)
+        self.spi
+            .write_command(DisplayCommand::InterfacePixelFormat, &[0x55])?; //Interface Pixel Format    16bit/pixel
+        self.spi
+            .write_command(DisplayCommand::SetDisplayMode, &[0x00])?;
         self.delay.delay_ms(10);
-        self.write_command(DisplayCommand::TearingEffectLineOn, &[])?; //TE ON
-        self.write_command(DisplayCommand::WriteDisplayBrightness, &[])?; //Write Display Brightness  MAX_VAL=0XFF
-        self.write_command(DisplayCommand::SleepOut, &[])?; //Sleep Out delay_ms(120);
+        self.spi
+            .write_command(DisplayCommand::TearingEffectLineOn, &[])?; //TE ON
+        self.spi
+            .write_command(DisplayCommand::WriteDisplayBrightness, &[])?; //Write Display Brightness  MAX_VAL=0XFF
+        self.spi.write_command(DisplayCommand::SleepOut, &[])?; //Sleep Out delay_ms(120);
         self.delay.delay_ms(120);
-        self.write_command(DisplayCommand::DisplayOn, &[])?; //Display on delay_ms(10);
+        self.spi.write_command(DisplayCommand::DisplayOn, &[])?; //Display on delay_ms(10);
         self.delay.delay_ms(10);
-        self.write_command(DisplayCommand::WriteDisplayBrightness, &[0xFF])?; //Write Display Brightness  MAX_VAL=0XFF
-        self.write_command(DisplayCommand::NormalDisplayModeOn, &[])?;
+        self.spi
+            .write_command(DisplayCommand::WriteDisplayBrightness, &[0xFF])?; //Write Display Brightness  MAX_VAL=0XFF
+        self.spi
+            .write_command(DisplayCommand::NormalDisplayModeOn, &[])?;
 
-        self.write_command(
+        self.spi.write_command(
             DisplayCommand::MemoryAccessControl,
             &[RM690B0_MADCTL_RGB | RM690B0_MADCTL_MV | RM690B0_MADCTL_MX],
         )?;
@@ -177,28 +218,11 @@ where
             (y_end & 0xFF) as u8,
         ];
 
-        self.write_command(DisplayCommand::ColumnAddressSet, &param_caset)?;
-        self.write_command(DisplayCommand::RowAddressSet, &param_raset)?;
-        self.write_command(DisplayCommand::MemoryWrite, &[])?;
-
-        Ok(())
-    }
-
-    fn write_command<C: Copy + Into<u16>>(&mut self, cmd: C, mut param: &[u8]) -> Result<()> {
-        //log::info!(
-        //    "write_command addr=0x{:06x} param={:?}",
-        //    (cmd.into() as u32),
-        //    param,
-        //);
         self.spi
-            .write(
-                SpiDataMode::Single,
-                Command::Command8(0x02, SpiDataMode::Single),
-                Address::Address24(cmd.into() as u32, SpiDataMode::Single),
-                0,
-                &mut param,
-            )
-            .map_err(|_| anyhow::format_err!("spi error"))?;
+            .write_command(DisplayCommand::ColumnAddressSet, &param_caset)?;
+        self.spi
+            .write_command(DisplayCommand::RowAddressSet, &param_raset)?;
+        self.spi.write_command(DisplayCommand::MemoryWrite, &[])?;
 
         Ok(())
     }
@@ -211,18 +235,13 @@ where
 
         let chunks = self.buf.chunks(64);
 
+        let mut len = 0;
         for chunk in chunks {
-            self.spi
-                .write(
-                    SpiDataMode::Quad,
-                    Command::Command8(0x12, SpiDataMode::Single),
-                    Address::Address24(0x3C00, SpiDataMode::Quad),
-                    0,
-                    &chunk,
-                )
-                .map_err(|_| anyhow::format_err!("spi error"))?;
+            self.spi.write_pixels(&chunk)?;
+            len += 1;
         }
 
+        log::info!("flush_full wrote {} chunks", len);
         Ok(())
     }
 
@@ -252,15 +271,7 @@ where
                 chunk.push(self.buf[idx + 1]);
 
                 if chunk.len() >= 64 {
-                    self.spi
-                        .write(
-                            SpiDataMode::Quad,
-                            Command::Command8(0x12, SpiDataMode::Single),
-                            Address::Address24(0x3C00, SpiDataMode::Quad),
-                            0,
-                            &chunk,
-                        )
-                        .map_err(|_| anyhow::format_err!("spi error"))?;
+                    self.spi.write_pixels(&chunk)?;
                     chunk = Vec::with_capacity(64);
                 }
             }
@@ -268,15 +279,7 @@ where
 
         if chunk.len() > 0 {
             //log::info!("last chunk {}", chunk.len());
-            self.spi
-                .write(
-                    SpiDataMode::Quad,
-                    Command::Command8(0x12, SpiDataMode::Single),
-                    Address::Address24(0x3C00, SpiDataMode::Quad),
-                    0,
-                    &chunk,
-                )
-                .map_err(|_| anyhow::format_err!("spi error"))?;
+            self.spi.write_pixels(&chunk)?;
         }
 
         //log::info!("flushed");
@@ -288,7 +291,7 @@ where
 impl<D, SPI, RST> OriginDimensions for RM690B0<D, SPI, RST>
 where
     D: DelayNs,
-    SPI: esp_hal::spi::master::HalfDuplexReadWrite,
+    SPI: SpiWrite,
     RST: OutputPin,
 {
     fn size(&self) -> embedded_graphics::prelude::Size {
@@ -299,7 +302,7 @@ where
 impl<D, SPI, RST> DrawTarget for RM690B0<D, SPI, RST>
 where
     D: DelayNs,
-    SPI: esp_hal::spi::master::HalfDuplexReadWrite,
+    SPI: SpiWrite,
     RST: OutputPin,
 {
     type Error = anyhow::Error;
@@ -345,8 +348,8 @@ where
         end.x += end.x % 2;
         end.x += end.x % 2;
 
-        self.dirty.push((start, end));
-        self.flush_dirty().ok();
+        //self.dirty.push((start, end));
+        //self.flush_dirty().ok();
         Ok(())
     }
 }
