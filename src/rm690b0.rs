@@ -152,14 +152,15 @@ where
         x_end: u16,
         y_end: u16,
     ) -> Result<()> {
-        log::info!(
-            "set_address_window x=({},{}), y=({},{})",
-            x_start,
-            x_end,
-            y_start,
-            y_end
-        );
-
+        //log::info!(
+        //    "set_address_window x=({},{}), y=({},{}) delta_x={}, delta_y={}",
+        //    x_start,
+        //    x_end,
+        //    y_start,
+        //    y_end,
+        //    dx,
+        //    dy
+        //);
         let param_caset = vec![
             ((x_start >> 8) & 0xFF) as u8,
             (x_start & 0xFF) as u8,
@@ -182,11 +183,11 @@ where
     }
 
     fn write_command<C: Copy + Into<u16>>(&mut self, cmd: C, mut param: &[u8]) -> Result<()> {
-        log::info!(
-            "write_command addr=0x{:06x} param={:?}",
-            (cmd.into() as u32),
-            param,
-        );
+        //log::info!(
+        //    "write_command addr=0x{:06x} param={:?}",
+        //    (cmd.into() as u32),
+        //    param,
+        //);
         self.spi
             .write(
                 SpiDataMode::Single,
@@ -205,34 +206,74 @@ where
         self.set_address_window(16, 0, 16 + size.width as u16 - 1, size.height as u16 - 1)?;
 
         let chunks = self.buf.chunks(64);
-        let mut first = true;
 
         for chunk in chunks {
-            if first {
-                self.spi
-                    .write(
-                        SpiDataMode::Quad,
-                        Command::Command8(0x32, SpiDataMode::Single),
-                        Address::Address24(0x2C00, SpiDataMode::Single),
-                        0,
-                        &chunk,
-                    )
-                    .map_err(|_| anyhow::format_err!("spi error"))?;
-                first = false;
-            } else {
-                self.spi
-                    .write(
-                        SpiDataMode::Quad,
-                        Command::Command8(0x32, SpiDataMode::Single),
-                        Address::Address24(0x3C00, SpiDataMode::Single),
-                        0,
-                        &chunk,
-                    )
-                    .map_err(|_| anyhow::format_err!("spi error"))?;
+            self.spi
+                .write(
+                    SpiDataMode::Quad,
+                    Command::Command8(0x12, SpiDataMode::Single),
+                    Address::Address24(0x3C00, SpiDataMode::Quad),
+                    0,
+                    &chunk,
+                )
+                .map_err(|_| anyhow::format_err!("spi error"))?;
+        }
+
+        //log::info!("flushed");
+
+        Ok(())
+    }
+
+    pub fn flush_clip(&mut self, start: Point, end: Point) -> Result<()> {
+        self.set_address_window(
+            16 + start.x as u16,
+            16 + start.y as u16,
+            16 + end.x as u16 - 1,
+            16 + end.y as u16 - 1,
+        )?;
+
+        let mut chunk = Vec::with_capacity(64);
+        let size = self.size();
+
+        for y in start.y..end.y {
+            for x in start.x..end.x {
+                let idx = ((x + (y * size.width as i32)) * 2) as usize;
+                //log::info!("x={}, y={}, idx={}", x, y, idx);
+
+                chunk.push(self.buf[idx]);
+                chunk.push(self.buf[idx + 1]);
+
+                if chunk.len() >= 64 {
+                    self.spi
+                        .write(
+                            SpiDataMode::Quad,
+                            Command::Command8(0x12, SpiDataMode::Single),
+                            Address::Address24(0x3C00, SpiDataMode::Quad),
+                            0,
+                            &chunk,
+                        )
+                        .map_err(|_| anyhow::format_err!("spi error"))?;
+
+                    //log::info!("sent chunk {}", chunk.len());
+                    chunk = Vec::with_capacity(64);
+                }
             }
         }
 
-        log::info!("flushed");
+        if chunk.len() > 0 {
+            //log::info!("last chunk {}", chunk.len());
+            self.spi
+                .write(
+                    SpiDataMode::Quad,
+                    Command::Command8(0x12, SpiDataMode::Single),
+                    Address::Address24(0x3C00, SpiDataMode::Quad),
+                    0,
+                    &chunk,
+                )
+                .map_err(|_| anyhow::format_err!("spi error"))?;
+        }
+
+        //log::info!("flushed");
 
         Ok(())
     }
@@ -262,9 +303,27 @@ where
     where
         I: IntoIterator<Item = embedded_graphics::Pixel<Self::Color>>,
     {
+        let size = self.size();
+
+        let mut start = Point::new(size.width as i32, size.height as i32);
+        let mut end = Point::zero();
+
         for pixel in pixels {
-            let size = self.size();
             let Pixel(point, color) = pixel;
+
+            if point.x <= start.x {
+                start.x = point.x
+            }
+            if point.y <= start.y {
+                start.y = point.y
+            }
+            if point.x >= end.x {
+                end.x = point.x
+            }
+            if point.y >= end.y {
+                end.y = point.y
+            }
+
             let idx = ((point.x + (point.y * size.width as i32)) * 2) as usize;
 
             if idx < self.buf.len() {
@@ -273,7 +332,23 @@ where
                 self.buf[idx + 1] = b;
             }
         }
+        if start.x % 2 == 1 {
+            start.x -= 1;
+        }
+        if start.y % 2 == 1 {
+            start.y -= 1;
+        }
+        if end.x % 2 == 1 {
+            end.x += 1;
+        }
+        if end.y % 2 == 1 {
+            end.y += 1;
+        }
 
+        //log::info!("draw_iter {} {} delta_x={} delta_y={} ", start, end, dx, dy);
+
+        //self.flush().ok();
+        self.flush_clip(start, end).ok();
         Ok(())
     }
 }

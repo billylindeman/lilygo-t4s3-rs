@@ -98,53 +98,38 @@ fn main() -> ! {
             primitives::{PrimitiveStyleBuilder, Rectangle},
         };
 
-        let style = PrimitiveStyleBuilder::new()
-            .fill_color(Rgb565::BLACK)
-            .build();
+        let style = PrimitiveStyleBuilder::new().fill_color(Rgb565::RED).build();
 
         Rectangle::new(Point::new(0, 0), display.size())
             .into_styled(style)
             .draw(&mut display)
             .unwrap();
 
-        //let style = PrimitiveStyleBuilder::new()
-        //    .fill_color(Rgb565::WHITE)
-        //    .build();
+        let style = PrimitiveStyleBuilder::new()
+            .fill_color(Rgb565::WHITE)
+            .build();
 
-        //Rectangle::new(Point::new(64, 64), Size::new(64, 64))
-        //    .into_styled(style)
-        //    .draw(&mut display)
-        //    .unwrap();
+        Rectangle::new(Point::new(64, 64), Size::new(64, 64))
+            .into_styled(style)
+            .draw(&mut display)
+            .unwrap();
 
-        //let style = MonoTextStyle::new(&FONT_10X20, Rgb565::WHITE);
-        //Text::new("Hello,\nRust!", Point::new(128, 128), style)
-        //    .draw(&mut display)
-        //    .expect("could not write text");
-        //
-
-        let mut flip = false;
-        loop {
-            let style = PrimitiveStyleBuilder::new()
-                .fill_color(match flip {
-                    true => Rgb565::BLACK,
-                    false => Rgb565::WHITE,
-                })
-                .build();
-
-            Rectangle::new(Point::new(0, 0), display.size())
-                .into_styled(style)
-                .draw(&mut display)
-                .unwrap();
-            display.flush().ok();
-
-            flip = !flip;
-        }
+        let style = MonoTextStyle::new(&FONT_10X20, Rgb565::WHITE);
+        Text::new("Hello,\nRust!", Point::new(128, 128), style)
+            .draw(&mut display)
+            .expect("could not write text");
     }
 
-    //let converted = display.color_converted::<Rgb888>();
-    //let mut console = Console::on_frame_buffer(converted);
+    let converted = display.color_converted::<Rgb888>();
+    let mut console = Console::on_frame_buffer(converted);
 
-    //loop {
-    //    console.write_str("HELLO WORLD CONSOLE").unwrap();
-    //}
+    let mut i = 0;
+    loop {
+        console
+            .write_str(&alloc::format!("HELLO WORLD RUST {} \n ", i))
+            .unwrap();
+        i += 1;
+        delay.delay_millis(100);
+    }
+    //loop {}
 }
