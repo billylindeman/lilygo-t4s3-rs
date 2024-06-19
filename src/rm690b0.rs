@@ -56,9 +56,9 @@ pub enum DisplayCommand {
     PageSet = 0xFE00,
 }
 
-impl Into<u16> for DisplayCommand {
-    fn into(self) -> u16 {
-        self as u16
+impl From<DisplayCommand> for u16 {
+    fn from(value: DisplayCommand) -> Self {
+        value as u16
     }
 }
 
@@ -191,11 +191,11 @@ where
             .write(
                 SpiDataMode::Single,
                 Command::Command8(0x02, SpiDataMode::Single),
-                Address::Address24((cmd.into() as u32), SpiDataMode::Single),
+                Address::Address24(cmd.into() as u32, SpiDataMode::Single),
                 0,
                 &mut param,
             )
-            .map_err(|e| anyhow::format_err!("spi error"))?;
+            .map_err(|_| anyhow::format_err!("spi error"))?;
 
         Ok(())
     }

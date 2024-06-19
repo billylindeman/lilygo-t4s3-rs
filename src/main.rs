@@ -4,11 +4,13 @@
 extern crate alloc;
 
 use alloc::vec::Vec;
+use core::fmt::Write;
 use embedded_graphics::{
-    geometry::Size,
+    draw_target::DrawTargetExt,
+    geometry::{Dimensions, OriginDimensions, Point, Size},
     mono_font::iso_8859_14::FONT_6X10,
-    pixelcolor::Rgb565,
-    primitives::StyledDrawable,
+    pixelcolor::{Rgb565, Rgb888},
+    primitives::{Rectangle, StyledDrawable},
     text::{Text, TextStyleBuilder},
 };
 use esp_backtrace as _;
@@ -25,6 +27,8 @@ use esp_hal::{
     },
     system::SystemControl,
 };
+
+use embedded_term::Console;
 
 #[global_allocator]
 static ALLOCATOR: esp_alloc::EspHeap = esp_alloc::EspHeap::empty();
@@ -53,7 +57,7 @@ fn main() -> ! {
 
     let io = Io::new(peripherals.GPIO, peripherals.IO_MUX);
 
-    let mut pmic_en = Output::new(io.pins.gpio9, Level::High);
+    let mut _pmic_en = Output::new(io.pins.gpio9, Level::High);
 
     let mut display = {
         let rst = Output::new(io.pins.gpio13, Level::High);
@@ -65,7 +69,7 @@ fn main() -> ! {
         let data2 = io.pins.gpio16;
         let data3 = io.pins.gpio12;
 
-        let spi = Spi::new_half_duplex(peripherals.SPI3, 36.MHz(), SpiMode::Mode0, &clocks)
+        let spi = Spi::new_half_duplex(peripherals.SPI3, 80.MHz(), SpiMode::Mode0, &clocks)
             .with_pins(
                 Some(sclk),
                 Some(data0),
@@ -112,15 +116,35 @@ fn main() -> ! {
         //    .draw(&mut display)
         //    .unwrap();
 
-        let style = MonoTextStyle::new(&FONT_10X20, Rgb565::WHITE);
-        Text::new("Hello,\nRust!", Point::new(128, 128), style)
-            .draw(&mut display)
-            .expect("could not write text");
+        //let style = MonoTextStyle::new(&FONT_10X20, Rgb565::WHITE);
+        //Text::new("Hello,\nRust!", Point::new(128, 128), style)
+        //    .draw(&mut display)
+        //    .expect("could not write text");
+        //
+
+        let mut flip = false;
+        loop {
+            let style = PrimitiveStyleBuilder::new()
+                .fill_color(match flip {
+                    true => Rgb565::BLACK,
+                    false => Rgb565::WHITE,
+                })
+                .build();
+
+            Rectangle::new(Point::new(0, 0), display.size())
+                .into_styled(style)
+                .draw(&mut display)
+                .unwrap();
+            display.flush().ok();
+
+            flip = !flip;
+        }
     }
 
-    display.flush().expect("could not flush display");
+    //let converted = display.color_converted::<Rgb888>();
+    //let mut console = Console::on_frame_buffer(converted);
 
-    loop {
-        delay.delay(5000.millis());
-    }
+    //loop {
+    //    console.write_str("HELLO WORLD CONSOLE").unwrap();
+    //}
 }
