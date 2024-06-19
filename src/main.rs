@@ -13,6 +13,11 @@ use embedded_graphics::{
     primitives::{Rectangle, StyledDrawable},
     text::{Text, TextStyleBuilder},
 };
+use embedded_plots::{
+    axis::Scale,
+    curve::{Curve, PlotPoint},
+    single_plot::SinglePlot,
+};
 use esp_backtrace as _;
 use esp_hal::{
     clock::ClockControl,
@@ -98,38 +103,41 @@ fn main() -> ! {
             primitives::{PrimitiveStyleBuilder, Rectangle},
         };
 
-        let style = PrimitiveStyleBuilder::new().fill_color(Rgb565::RED).build();
+        let mut x = 0;
+        let mut y = 0;
 
-        Rectangle::new(Point::new(0, 0), display.size())
-            .into_styled(style)
-            .draw(&mut display)
-            .unwrap();
+        let mut data = alloc::vec![
+            PlotPoint { x: 0, y: 0 },
+            PlotPoint { x: 1, y: 2 },
+            PlotPoint { x: 2, y: 2 },
+            PlotPoint { x: 3, y: 0 },
+        ];
 
-        let style = PrimitiveStyleBuilder::new()
-            .fill_color(Rgb565::WHITE)
-            .build();
+        loop {
+            let style = PrimitiveStyleBuilder::new()
+                .fill_color(Rgb565::BLACK)
+                .build();
+            Rectangle::new(Point::new(0, 0), display.size())
+                .into_styled(style)
+                .draw(&mut display)
+                .unwrap();
 
-        Rectangle::new(Point::new(64, 64), Size::new(64, 64))
-            .into_styled(style)
-            .draw(&mut display)
-            .unwrap();
+            let curve = Curve::from_data(data.as_slice());
 
-        let style = MonoTextStyle::new(&FONT_10X20, Rgb565::WHITE);
-        Text::new("Hello,\nRust!", Point::new(128, 128), style)
-            .draw(&mut display)
-            .expect("could not write text");
+            let plot = SinglePlot::new(&curve, Scale::RangeFraction(3), Scale::RangeFraction(2))
+                .into_drawable(Point { x: 50, y: 10 }, Point { x: 430, y: 250 })
+                .set_color(RgbColor::WHITE)
+                .set_text_color(RgbColor::WHITE);
+
+            plot.draw(&mut display).unwrap();
+
+            display.flush_dirty().ok();
+
+            x += 1;
+            y += x % 3;
+
+            data.push(PlotPoint { x, y });
+            delay.delay_millis(100);
+        }
     }
-
-    let converted = display.color_converted::<Rgb888>();
-    let mut console = Console::on_frame_buffer(converted);
-
-    let mut i = 0;
-    loop {
-        console
-            .write_str(&alloc::format!("HELLO WORLD RUST {} \n ", i))
-            .unwrap();
-        i += 1;
-        delay.delay_millis(100);
-    }
-    //loop {}
 }

@@ -2,7 +2,8 @@ use alloc::vec;
 use alloc::vec::Vec;
 use anyhow::Result;
 use embedded_graphics::{
-    draw_target::DrawTarget, geometry::OriginDimensions, pixelcolor::Rgb565, prelude::*, Pixel,
+    draw_target::DrawTarget, geometry::OriginDimensions, pixelcolor::Rgb565, prelude::*,
+    primitives::Rectangle, Pixel,
 };
 use embedded_hal::delay::DelayNs;
 use embedded_hal::digital::OutputPin;
@@ -72,6 +73,7 @@ where
     spi: SPI,
     rst: RST,
     buf: Vec<u8>,
+    dirty: Vec<(Point, Point)>,
 }
 impl<D, SPI, RST> RM690B0<D, SPI, RST>
 where
@@ -81,12 +83,14 @@ where
 {
     pub fn new(delay: D, spi: SPI, rst: RST) -> Self {
         let buf = vec![0; 540000];
+        let dirty = Vec::new();
 
         Self {
             delay,
             spi,
             rst,
             buf,
+            dirty,
         }
     }
 
@@ -201,7 +205,9 @@ where
         Ok(())
     }
 
-    pub fn flush(&mut self) -> Result<()> {
+    pub fn flush_full(&mut self) -> Result<()> {
+        self.dirty.clear();
+
         let size = self.size();
         self.set_address_window(16, 0, 16 + size.width as u16 - 1, size.height as u16 - 1)?;
 
@@ -219,12 +225,18 @@ where
                 .map_err(|_| anyhow::format_err!("spi error"))?;
         }
 
-        //log::info!("flushed");
+        Ok(())
+    }
+
+    pub fn flush_dirty(&mut self) -> Result<()> {
+        while let Some((start, end)) = self.dirty.pop() {
+            self.flush_clip(start, end)?;
+        }
 
         Ok(())
     }
 
-    pub fn flush_clip(&mut self, start: Point, end: Point) -> Result<()> {
+    fn flush_clip(&mut self, start: Point, end: Point) -> Result<()> {
         self.set_address_window(
             16 + start.x as u16,
             16 + start.y as u16,
@@ -345,10 +357,7 @@ where
             end.y += 1;
         }
 
-        //log::info!("draw_iter {} {} delta_x={} delta_y={} ", start, end, dx, dy);
-
-        //self.flush().ok();
-        self.flush_clip(start, end).ok();
+        self.dirty.push((start, end));
         Ok(())
     }
 }
