@@ -120,6 +120,7 @@ where
         self.write_command_u8(0x51, 0xFF, None)?; //Write Display Brightness  MAX_VAL=0XFF
 
         self.write_command_u8(0x13, 0x00, None)?;
+        self.write_command_u8(0x36, 0x00, None)?;
 
         Ok(())
     }
@@ -131,6 +132,14 @@ where
         x_end: u16,
         y_end: u16,
     ) -> Result<()> {
+        log::info!(
+            "set_address_window x=({},{}), y=({},{})",
+            x_start,
+            x_end,
+            y_start,
+            y_end
+        );
+
         let param_caset = vec![
             ((x_start >> 8) & 0xFF) as u8,
             (x_start & 0xFF) as u8,
@@ -213,7 +222,7 @@ where
                         0,
                         &chunk,
                     )
-                    .map_err(|e| anyhow::format_err!("spi error"))?;
+                    .map_err(|_| anyhow::format_err!("spi error"))?;
                 first = false;
             } else {
                 self.spi
@@ -224,7 +233,7 @@ where
                         0,
                         &chunk,
                     )
-                    .map_err(|e| anyhow::format_err!("spi error"))?;
+                    .map_err(|_| anyhow::format_err!("spi error"))?;
             }
         }
 
@@ -241,7 +250,7 @@ where
     RST: OutputPin,
 {
     fn size(&self) -> embedded_graphics::prelude::Size {
-        (400, 650).into()
+        (450, 600).into()
     }
 }
 
@@ -259,12 +268,15 @@ where
         I: IntoIterator<Item = embedded_graphics::Pixel<Self::Color>>,
     {
         for pixel in pixels {
+            let size = self.size();
             let Pixel(point, color) = pixel;
-            let idx = (point.x / 2 + point.y * 225) as usize;
+            let idx = ((point.x + (point.y * size.width as i32)) * 2) as usize;
 
-            let [a, b] = color.to_be_bytes();
-            self.buf[idx] = a;
-            self.buf[idx + 1] = b;
+            if idx < self.buf.len() {
+                let [a, b] = color.to_be_bytes();
+                self.buf[idx] = a;
+                self.buf[idx + 1] = b;
+            }
         }
 
         Ok(())

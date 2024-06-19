@@ -84,7 +84,7 @@ fn main() -> ! {
 
     {
         use embedded_graphics::{
-            mono_font::{ascii::FONT_6X10, MonoTextStyle},
+            mono_font::{ascii::FONT_10X20, MonoTextStyle},
             text::Text,
         };
 
@@ -94,24 +94,31 @@ fn main() -> ! {
             primitives::{PrimitiveStyleBuilder, Rectangle},
         };
 
-        // Rectangle with red 3 pixel wide stroke and green fill with the top left corner at (30, 20) and
-        // a size of (10, 15)
         let style = PrimitiveStyleBuilder::new().fill_color(Rgb565::RED).build();
 
-        Rectangle::new(Point::new(0, 0), Size::new(450, 600))
+        Rectangle::new(Point::new(0, 0), display.size())
             .into_styled(style)
             .draw(&mut display)
             .unwrap();
 
-        //       Text::new("Hello,\nRust!", Point::new(2, 28), style)
-        //            .draw(&mut display)
-        //            .expect("could not write text");
+        let style = PrimitiveStyleBuilder::new()
+            .fill_color(Rgb565::WHITE)
+            .build();
+
+        Rectangle::new(Point::new(64, 64), Size::new(450 - 64, 600 - 64))
+            .into_styled(style)
+            .draw(&mut display)
+            .unwrap();
+
+        //let style = MonoTextStyle::new(&FONT_10X20, Rgb565::WHITE);
+        //Text::new("Hello,\nRust!", Point::new(2, 28), style)
+        //    .draw(&mut display)
+        //    .expect("could not write text");
     }
 
     display.flush().expect("could not flush display");
 
     loop {
-        //log::info!("Hello world!");
         delay.delay(5000.millis());
     }
 }
