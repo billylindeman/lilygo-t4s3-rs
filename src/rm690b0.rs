@@ -1,5 +1,9 @@
 use alloc::vec;
+use alloc::vec::Vec;
 use anyhow::Result;
+use embedded_graphics::{
+    draw_target::DrawTarget, geometry::OriginDimensions, pixelcolor::Rgb565, prelude::*, Pixel,
+};
 use embedded_hal::delay::DelayNs;
 use embedded_hal::digital::OutputPin;
 use esp_hal::spi::{
@@ -55,6 +59,7 @@ where
     delay: D,
     spi: SPI,
     rst: RST,
+    buf: Vec<u8>,
 }
 impl<D, SPI, RST> RM690B0<D, SPI, RST>
 where
@@ -63,7 +68,14 @@ where
     RST: OutputPin,
 {
     pub fn new(delay: D, spi: SPI, rst: RST) -> Self {
-        Self { delay, spi, rst }
+        let buf = vec![0; 540000];
+
+        Self {
+            delay,
+            spi,
+            rst,
+            buf,
+        }
     }
 
     // Reset Display
@@ -93,33 +105,60 @@ where
         //{0x29, {0x00}, 0x20},           //Display on delay_ms(10);
         //{0x51, {0xFF}, 0x01},           //Write Display Brightness  MAX_VAL=0XFF
 
-        self.write_command(0xFE, 0x20, 0x01)?;
-        self.write_command(0x26, 0x0A, 0x01)?;
-        self.write_command(0x24, 0x80, 0x01)?; //SPI write RAM
-        self.write_command(0x5A, 0x51, 0x01)?; // 230918:SWIRE FOR BV6804
-        self.write_command(0x5B, 0x2E, 0x01)?; // 230918:SWIRE FOR BV6804
-        self.write_command(0xFE, 0x00, 0x01)?; //SET PAGE
-        self.write_command(0x3A, 0x55, 0x01)?; //Interface Pixel Format    16bit/pixel
-        self.write_command(0xC2, 0x00, 0x21)?; //delay_ms(10);
-        self.write_command(0x35, 0x00, 0x01)?; //TE ON
-        self.write_command(0x51, 0x00, 0x01)?; //Write Display Brightness  MAX_VAL=0XFF
-        self.write_command(0x11, 0x00, 0x80)?; //Sleep Out delay_ms(120);
-        self.write_command(0x29, 0x00, 0x20)?; //Display on delay_ms(10);
-        self.write_command(0x51, 0xFF, 0x01)?; //Write Display Brightness  MAX_VAL=0XFF
+        self.write_command_u8(0xFE, 0x20, None)?; //SET PAGE
+        self.write_command_u8(0x26, 0x0A, None)?; //MIPI OFF
+        self.write_command_u8(0x24, 0x80, None)?; //SPI write RAM
+        self.write_command_u8(0x5A, 0x51, None)?; // 230918:SWIRE FOR BV6804
+        self.write_command_u8(0x5B, 0x2E, None)?; // 230918:SWIRE FOR BV6804
+        self.write_command_u8(0xFE, 0x00, None)?; //SET PAGE
+        self.write_command_u8(0x3A, 0x55, None)?; //Interface Pixel Format    16bit/pixel
+        self.write_command_u8(0xC2, 0x00, Some(10))?; //delay_ms(10);
+        self.write_command_u8(0x35, 0x00, None)?; //TE ON
+        self.write_command_u8(0x51, 0x00, None)?; //Write Display Brightness  MAX_VAL=0XFF
+        self.write_command_u8(0x11, 0x00, Some(120))?; //Sleep Out delay_ms(120);
+        self.write_command_u8(0x29, 0x00, Some(10))?; //Display on delay_ms(10);
+        self.write_command_u8(0x51, 0xFF, None)?; //Write Display Brightness  MAX_VAL=0XFF
 
-        self.write_command(0x23, 0x0, 0x0)?; //All Pixels On
+        self.write_command_u8(0x13, 0x00, None)?;
 
         Ok(())
     }
 
-    fn write_command(&mut self, cmd: u8, param: u8, len: usize) -> Result<()> {
-        let mut data = vec![param; len & 0x1F];
+    pub fn set_address_window(
+        &mut self,
+        x_start: u16,
+        y_start: u16,
+        x_end: u16,
+        y_end: u16,
+    ) -> Result<()> {
+        let param_caset = vec![
+            ((x_start >> 8) & 0xFF) as u8,
+            (x_start & 0xFF) as u8,
+            ((x_end >> 8) & 0xFF) as u8,
+            (x_end & 0xFF) as u8,
+        ];
+
+        let param_raset = vec![
+            ((y_start >> 8) & 0xFF) as u8,
+            (y_start & 0xFF) as u8,
+            ((y_end >> 8) & 0xFF) as u8,
+            (y_end & 0xFF) as u8,
+        ];
+
+        self.write_command_vec(0x2A, param_caset)?;
+        self.write_command_vec(0x2B, param_raset)?;
+        self.write_command_u8(0x2C, 0x00, None)?;
+
+        Ok(())
+    }
+
+    fn write_command_u8(&mut self, cmd: u8, param: u8, delay_ms: Option<u32>) -> Result<()> {
+        let mut data = [param; 1];
 
         log::info!(
-            "write_command addr=0x{:06x} param=0x{:02x} len=0x{:02x}",
+            "write_command addr=0x{:06x} param=0x{:02x}",
             (cmd as u32) << 8,
             param,
-            len
         );
         self.spi
             .write(
@@ -131,10 +170,101 @@ where
             )
             .map_err(|e| anyhow::format_err!("spi error"))?;
 
-        if (len & 0x80) != 0 {
-            //self.delay.delay_ms(120);
-        } else if (len & 0x20) != 0 {
-            //self.delay.delay_ms(10);
+        if let Some(ms) = delay_ms {
+            self.delay.delay_ms(ms);
+        }
+
+        Ok(())
+    }
+
+    fn write_command_vec(&mut self, cmd: u8, mut param: alloc::vec::Vec<u8>) -> Result<()> {
+        log::info!(
+            "write_command addr=0x{:06x} param={:?}",
+            (cmd as u32) << 8,
+            param,
+        );
+        self.spi
+            .write(
+                SpiDataMode::Single,
+                Command::Command8(0x02, SpiDataMode::Single),
+                Address::Address24((cmd as u32) << 8, SpiDataMode::Single),
+                0,
+                &mut param,
+            )
+            .map_err(|e| anyhow::format_err!("spi error"))?;
+
+        Ok(())
+    }
+
+    pub fn flush(&mut self) -> Result<()> {
+        let size = self.size();
+        self.set_address_window(0, 0, size.width as u16, size.height as u16)?;
+
+        let chunks = self.buf.chunks(64);
+        let mut first = true;
+
+        for chunk in chunks {
+            if first {
+                self.spi
+                    .write(
+                        SpiDataMode::Quad,
+                        Command::Command8(0x32, SpiDataMode::Single),
+                        Address::Address24(0x2C00, SpiDataMode::Single),
+                        0,
+                        &chunk,
+                    )
+                    .map_err(|e| anyhow::format_err!("spi error"))?;
+                first = false;
+            } else {
+                self.spi
+                    .write(
+                        SpiDataMode::Quad,
+                        Command::Command8(0x32, SpiDataMode::Single),
+                        Address::Address24(0x3C00, SpiDataMode::Single),
+                        0,
+                        &chunk,
+                    )
+                    .map_err(|e| anyhow::format_err!("spi error"))?;
+            }
+        }
+
+        log::info!("flushed");
+
+        Ok(())
+    }
+}
+
+impl<D, SPI, RST> OriginDimensions for RM690B0<D, SPI, RST>
+where
+    D: DelayNs,
+    SPI: esp_hal::spi::master::HalfDuplexReadWrite,
+    RST: OutputPin,
+{
+    fn size(&self) -> embedded_graphics::prelude::Size {
+        (400, 650).into()
+    }
+}
+
+impl<D, SPI, RST> DrawTarget for RM690B0<D, SPI, RST>
+where
+    D: DelayNs,
+    SPI: esp_hal::spi::master::HalfDuplexReadWrite,
+    RST: OutputPin,
+{
+    type Error = anyhow::Error;
+    type Color = Rgb565;
+
+    fn draw_iter<I>(&mut self, pixels: I) -> core::result::Result<(), Self::Error>
+    where
+        I: IntoIterator<Item = embedded_graphics::Pixel<Self::Color>>,
+    {
+        for pixel in pixels {
+            let Pixel(point, color) = pixel;
+            let idx = (point.x / 2 + point.y * 225) as usize;
+
+            let [a, b] = color.to_be_bytes();
+            self.buf[idx] = a;
+            self.buf[idx + 1] = b;
         }
 
         Ok(())

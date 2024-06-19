@@ -4,6 +4,13 @@
 extern crate alloc;
 
 use alloc::vec::Vec;
+use embedded_graphics::{
+    geometry::Size,
+    mono_font::iso_8859_14::FONT_6X10,
+    pixelcolor::Rgb565,
+    primitives::StyledDrawable,
+    text::{Text, TextStyleBuilder},
+};
 use esp_backtrace as _;
 use esp_hal::{
     clock::ClockControl,
@@ -44,19 +51,6 @@ fn main() -> ! {
 
     esp_println::logger::init_logger_from_env();
 
-    {
-        log::info!("========== Placing vector in PSRAM ==========");
-        let mut large_vec: Vec<u32> = Vec::with_capacity(500 * 1024 / 4);
-
-        for i in 0..(500 * 1024 / 4) {
-            large_vec.push((i & 0xff) as u32);
-        }
-
-        log::info!("large vec size = {} bytes", large_vec.len() * 4);
-        log::info!("large vec address = {:p}", large_vec.as_ptr());
-        log::info!("large vec[..100] = {:?}", &large_vec[..100]);
-    }
-
     let io = Io::new(peripherals.GPIO, peripherals.IO_MUX);
 
     let mut pmic_en = Output::new(io.pins.gpio9, Level::High);
@@ -88,11 +82,36 @@ fn main() -> ! {
     display.reset();
     display.init().expect("error initializing display");
 
+    {
+        use embedded_graphics::{
+            mono_font::{ascii::FONT_6X10, MonoTextStyle},
+            text::Text,
+        };
+
+        use embedded_graphics::{
+            pixelcolor::Rgb565,
+            prelude::*,
+            primitives::{PrimitiveStyleBuilder, Rectangle},
+        };
+
+        // Rectangle with red 3 pixel wide stroke and green fill with the top left corner at (30, 20) and
+        // a size of (10, 15)
+        let style = PrimitiveStyleBuilder::new().fill_color(Rgb565::RED).build();
+
+        Rectangle::new(Point::new(0, 0), Size::new(450, 600))
+            .into_styled(style)
+            .draw(&mut display)
+            .unwrap();
+
+        //       Text::new("Hello,\nRust!", Point::new(2, 28), style)
+        //            .draw(&mut display)
+        //            .expect("could not write text");
+    }
+
+    display.flush().expect("could not flush display");
+
     loop {
-        log::info!("Hello world!");
+        //log::info!("Hello world!");
         delay.delay(5000.millis());
-        for _ in 0..2 {
-            display.init().ok();
-        }
     }
 }

@@ -7,6 +7,7 @@ license = "MIT OR Apache-2.0"
 
 [dependencies]
 anyhow = { version = "1.0.86", default-features = false }
+embedded-graphics = "0.8.1"
 embedded-hal = "1.0.0"
 esp-alloc = "0.4.0"
 esp-backtrace = { version = "0.12.0", features = [
@@ -17,8 +18,8 @@ esp-backtrace = { version = "0.12.0", features = [
 ] }
 esp-hal = { version = "0.18.0", features = [ 
     "esp32s3",
-    "psram-8m",
-    "psram-80mhz",
+    "opsram-16m",
+    #"psram-80mhz",
 ] }
 esp-println = { version = "0.9.1", features = ["esp32s3", "log"] }
 log = "0.4.21"
