@@ -21,41 +21,45 @@ const RM690B0_MADCTL_BGR: u8 = 0x08;
 
 #[derive(Debug, Clone, Copy)]
 pub enum DisplayCommand {
-    Nop = 0x00,                                     // No Operation
-    SwReset = 0x0100,                               // Software Reset
-    SleepIn = 0x1000,                               // Sleep In
-    SleepOut = 0x1100,                              // Sleep Out
-    PartialDisplayModeOn = 0x001200,                // Partial Display Mode On
-    NormalDisplayModeOn = 0x001300,                 // Normal Display Mode On
-    AllPixelsOn = 0x2200,                           // Display Inversion Off
-    InversionOn = 0x2100,                           // Display Inversion On
-    DisplayOff = 0x2800,                            // Display Off
-    DisplayOn = 0x2900,                             // Display On
-    ColumnAddressSet = 0x2A00,                      // Column Address Set
-    PageAddressSet = 0xFE00,                        // Page Address Set
-    MemoryWrite = 0x2C00,                           // Memory Write
-    MemoryRead = 0x2E00,                            // Memory Read
-    PartialArea = 0x3000,                           // Partial Area
-    VerticalScrollingDefinition = 0x3300,           // Vertical Scrolling Definition
-    TearingEffectLineOff = 0x3400,                  // Tearing Effect Line Off
-    TearingEffectLineOn = 0x3500,                   // Tearing Effect Line On
-    MemoryAccessControl = 0x3600,                   // Memory Access Control
-    IdleModeOff = 0x3800,                           // Idle Mode Off
-    IdleModeOn = 0x3900,                            // Idle Mode On
-    InterfacePixelFormat = 0x3A00,                  // Interface Pixel Format
-    WriteMemoryContinue = 0x3C00,                   // Write Memory Continue
-    ReadMemoryContinue = 0x3E00,                    // Read Memory Continue
-    WriteDisplayBrightness = 0x5100,                // Write Display Brightness
-    ReadDisplayBrightness = 0x5200,                 // Read Display Brightness
-    WriteControlDisplay = 0x5300,                   // Write Control Display
-    ReadControlDisplay = 0x5400,                    // Read Control Display
-    WriteContentAdaptiveBrightnessControl = 0x5500, // Write Content Adaptive Brightness Control
-    ReadContentAdaptiveBrightnessControl = 0x5600,  // Read Content Adaptive Brightness Control
-    WriteCABCMinimumBrightness = 0x5E00,            // Write CABC Minimum Brightness
-    ReadCABCMinimumBrightness = 0x5F00,             // Read CABC Minimum Brightness
-    ReadID1 = 0xDA00,                               // Read ID1
-    ReadID2 = 0xDB00,                               // Read ID2
-    ReadID3 = 0xDC00,                               // Read ID3
+    Nop = 0x0000,                  // No Operation
+    SwReset = 0x0100,              // Software Reset
+    SleepIn = 0x1000,              // Sleep In
+    SleepOut = 0x1100,             // Sleep Out
+    PartialDisplayModeOn = 0x1200, // Partial Display Mode On
+    NormalDisplayModeOn = 0x1300,  // Normal Display Mode On
+    DisplayInversionOff = 0x2000,
+    DisplayInversionOn = 0x2100,
+    AllPixelsOff = 0x2200, // Display Inversion Off
+    AllPixelsOn = 0x2300,
+    DisplayOff = 0x2800,       // Display Off
+    DisplayOn = 0x2900,        // Display On
+    ColumnAddressSet = 0x2A00, // Column Address Set
+    RowAddressSet = 0x2B00,
+    MemoryWrite = 0x2C00,
+    PartialArea = 0x3000, // Partial Area
+    PartialAreaVertical = 0x3100,
+    TearingEffectLineOff = 0x3400, // Tearing Effect Line Off
+    TearingEffectLineOn = 0x3500,  // Tearing Effect Line On
+    MemoryAccessControl = 0x3600,  // Memory Access Control
+    IdleModeOff = 0x3800,          // Idle Mode Off
+    IdleModeOn = 0x3900,           // Idle Mode On
+    InterfacePixelFormat = 0x3A00, // Interface Pixel Format
+    MemoryWriteContinue = 0x3C00,  // Write Memory Continue
+    SetTearScaline = 0x4400,
+    GetScanline = 0x4500,
+    DeepStandbyModeOn = 0x4F00,
+    WriteDisplayBrightness = 0x5100, // Write Display Brightness
+    ReadDisplayBrightness = 0x5200,  // Read Display Brightness
+    WriteDisplayControl = 0x5300,    // Write Control Display
+    ReadDisplayControl = 0x5400,     // Read Control Display
+
+    PageSet = 0xFE00,
+}
+
+impl Into<u16> for DisplayCommand {
+    fn into(self) -> u16 {
+        self as u16
+    }
 }
 
 pub struct RM690B0<D, SPI, RST>
@@ -113,27 +117,29 @@ where
         //{0x29, {0x00}, 0x20},           //Display on delay_ms(10);
         //{0x51, {0xFF}, 0x01},           //Write Display Brightness  MAX_VAL=0XFF
 
-        self.write_command_u8(0xFE, 0x20, None)?; //SET PAGE
-        self.write_command_u8(0x26, 0x0A, None)?; //MIPI OFF
-        self.write_command_u8(0x24, 0x80, None)?; //SPI write RAM
-        self.write_command_u8(0x5A, 0x51, None)?; // 230918:SWIRE FOR BV6804
-        self.write_command_u8(0x5B, 0x2E, None)?; // 230918:SWIRE FOR BV6804
-        self.write_command_u8(0xFE, 0x00, None)?; //SET PAGE
-        self.write_command_u8(0x3A, 0x55, None)?; //Interface Pixel Format    16bit/pixel
-        self.write_command_u8(0xC2, 0x00, Some(10))?; //delay_ms(10);
-        self.write_command_u8(0x35, 0x00, None)?; //TE ON
-        self.write_command_u8(0x51, 0x00, None)?; //Write Display Brightness  MAX_VAL=0XFF
-        self.write_command_u8(0x11, 0x00, Some(120))?; //Sleep Out delay_ms(120);
-        self.write_command_u8(0x29, 0x00, Some(10))?; //Display on delay_ms(10);
-        self.write_command_u8(0x51, 0xFF, None)?; //Write Display Brightness  MAX_VAL=0XFF
+        self.write_command(DisplayCommand::PageSet, &[0x20])?; //SET PAGE
+        self.write_command(0x2600u16, &[0x0A])?; //MIPI OFF
+        self.write_command(0x2400u16, &[0x80])?; //SPI write RAM
+        self.write_command(0x5A00u16, &[0x51])?; // 230918:SWIRE FOR BV6804
+        self.write_command(0x5B00u16, &[0x2E])?; // 230918:SWIRE FOR BV6804
+        self.write_command(DisplayCommand::PageSet, &[0x00])?; //SET PAGE
+        self.write_command(DisplayCommand::InterfacePixelFormat, &[0x55])?; //Interface Pixel Format    16bit/pixel
+        self.write_command(0xC200u16, &[])?; //delay_ms(10);
+        self.delay.delay_ms(10);
+        self.write_command(DisplayCommand::TearingEffectLineOn, &[])?; //TE ON
+        self.write_command(DisplayCommand::WriteDisplayBrightness, &[])?; //Write Display Brightness  MAX_VAL=0XFF
+        self.write_command(DisplayCommand::SleepOut, &[])?; //Sleep Out delay_ms(120);
+        self.delay.delay_ms(120);
+        self.write_command(DisplayCommand::DisplayOn, &[])?; //Display on delay_ms(10);
+        self.delay.delay_ms(10);
+        self.write_command(DisplayCommand::WriteDisplayBrightness, &[0xFF])?; //Write Display Brightness  MAX_VAL=0XFF
 
-        self.write_command_u8(0x13, 0x00, None)?;
+        self.write_command(DisplayCommand::NormalDisplayModeOn, &[])?;
+        //self.write_command(DisplayCommand::AllPixelsOn, &[])?;
 
-        //self.write_command_u8(0x36, 0b01100000, None)?;
-        self.write_command_u8(
-            0x36,
-            RM690B0_MADCTL_RGB | RM690B0_MADCTL_MV | RM690B0_MADCTL_MX,
-            None,
+        self.write_command(
+            DisplayCommand::MemoryAccessControl,
+            &[RM690B0_MADCTL_RGB | RM690B0_MADCTL_MV | RM690B0_MADCTL_MX],
         )?;
 
         Ok(())
@@ -168,49 +174,24 @@ where
             (y_end & 0xFF) as u8,
         ];
 
-        self.write_command_vec(0x2A, param_caset)?;
-        self.write_command_vec(0x2B, param_raset)?;
-        self.write_command_u8(0x2C, 0x00, None)?;
+        self.write_command(DisplayCommand::ColumnAddressSet, &param_caset)?;
+        self.write_command(DisplayCommand::RowAddressSet, &param_raset)?;
+        self.write_command(DisplayCommand::MemoryWrite, &[])?;
 
         Ok(())
     }
 
-    fn write_command_u8(&mut self, cmd: u8, param: u8, delay_ms: Option<u32>) -> Result<()> {
-        let mut data = [param; 1];
-
-        log::info!(
-            "write_command addr=0x{:06x} param=0x{:02x}",
-            (cmd as u32) << 8,
-            param,
-        );
-        self.spi
-            .write(
-                SpiDataMode::Single,
-                Command::Command8(0x02, SpiDataMode::Single),
-                Address::Address24((cmd as u32) << 8, SpiDataMode::Single),
-                0,
-                &mut data,
-            )
-            .map_err(|e| anyhow::format_err!("spi error"))?;
-
-        if let Some(ms) = delay_ms {
-            self.delay.delay_ms(ms);
-        }
-
-        Ok(())
-    }
-
-    fn write_command_vec(&mut self, cmd: u8, mut param: alloc::vec::Vec<u8>) -> Result<()> {
+    fn write_command<C: Copy + Into<u16>>(&mut self, cmd: C, mut param: &[u8]) -> Result<()> {
         log::info!(
             "write_command addr=0x{:06x} param={:?}",
-            (cmd as u32) << 8,
+            (cmd.into() as u32),
             param,
         );
         self.spi
             .write(
                 SpiDataMode::Single,
                 Command::Command8(0x02, SpiDataMode::Single),
-                Address::Address24((cmd as u32) << 8, SpiDataMode::Single),
+                Address::Address24((cmd.into() as u32), SpiDataMode::Single),
                 0,
                 &mut param,
             )
