@@ -11,6 +11,14 @@ use esp_hal::spi::{
     SpiDataMode, SpiMode,
 };
 
+const RM690B0_MADCTL_MY: u8 = 0x80;
+const RM690B0_MADCTL_MX: u8 = 0x40;
+const RM690B0_MADCTL_MV: u8 = 0x20;
+const RM690B0_MADCTL_ML: u8 = 0x10;
+const RM690B0_MADCTL_RGB: u8 = 0x00;
+const RM690B0_MADCTL_MH: u8 = 0x04;
+const RM690B0_MADCTL_BGR: u8 = 0x08;
+
 #[derive(Debug, Clone, Copy)]
 pub enum DisplayCommand {
     Nop = 0x00,                                     // No Operation
@@ -120,7 +128,13 @@ where
         self.write_command_u8(0x51, 0xFF, None)?; //Write Display Brightness  MAX_VAL=0XFF
 
         self.write_command_u8(0x13, 0x00, None)?;
-        self.write_command_u8(0x36, 0x00, None)?;
+
+        //self.write_command_u8(0x36, 0b01100000, None)?;
+        self.write_command_u8(
+            0x36,
+            RM690B0_MADCTL_RGB | RM690B0_MADCTL_MV | RM690B0_MADCTL_MX | RM690B0_MADCTL_ML,
+            None,
+        )?;
 
         Ok(())
     }
@@ -207,7 +221,7 @@ where
 
     pub fn flush(&mut self) -> Result<()> {
         let size = self.size();
-        self.set_address_window(0, 0, size.width as u16, size.height as u16)?;
+        self.set_address_window(16, 0, 16 + size.width as u16 - 1, size.height as u16 - 1)?;
 
         let chunks = self.buf.chunks(64);
         let mut first = true;
@@ -250,7 +264,7 @@ where
     RST: OutputPin,
 {
     fn size(&self) -> embedded_graphics::prelude::Size {
-        (450, 600).into()
+        (600, 450).into()
     }
 }
 

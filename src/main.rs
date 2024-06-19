@@ -94,26 +94,28 @@ fn main() -> ! {
             primitives::{PrimitiveStyleBuilder, Rectangle},
         };
 
-        let style = PrimitiveStyleBuilder::new().fill_color(Rgb565::RED).build();
+        let style = PrimitiveStyleBuilder::new()
+            .fill_color(Rgb565::BLACK)
+            .build();
 
         Rectangle::new(Point::new(0, 0), display.size())
             .into_styled(style)
             .draw(&mut display)
             .unwrap();
 
-        let style = PrimitiveStyleBuilder::new()
-            .fill_color(Rgb565::WHITE)
-            .build();
+        //let style = PrimitiveStyleBuilder::new()
+        //    .fill_color(Rgb565::WHITE)
+        //    .build();
 
-        Rectangle::new(Point::new(64, 64), Size::new(450 - 64, 600 - 64))
-            .into_styled(style)
-            .draw(&mut display)
-            .unwrap();
-
-        //let style = MonoTextStyle::new(&FONT_10X20, Rgb565::WHITE);
-        //Text::new("Hello,\nRust!", Point::new(2, 28), style)
+        //Rectangle::new(Point::new(64, 64), Size::new(64, 64))
+        //    .into_styled(style)
         //    .draw(&mut display)
-        //    .expect("could not write text");
+        //    .unwrap();
+
+        let style = MonoTextStyle::new(&FONT_10X20, Rgb565::WHITE);
+        Text::new("Hello,\nRust!", Point::new(128, 128), style)
+            .draw(&mut display)
+            .expect("could not write text");
     }
 
     display.flush().expect("could not flush display");
