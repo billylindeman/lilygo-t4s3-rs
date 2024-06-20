@@ -68,6 +68,10 @@ pub trait SpiWrite {
     fn write_pixels(&mut self, chunk: &[u8]) -> Result<()>;
 }
 
+pub trait Display {
+    fn flush(&mut self) -> Result<()>;
+}
+
 #[cfg(not(feature = "dma"))]
 impl<SPI> SpiWrite for SPI
 where
@@ -109,22 +113,18 @@ where
     DmaMode: esp_hal::Mode,
 {
     fn write_command<CMD: Copy + Into<u16>>(&mut self, cmd: CMD, param: &[u8]) -> Result<()> {
-        let send: &mut [u8] = match param.len() {
-            0 => zero_buffer(),
-            1 => one_buffer(),
-            4 => four_buffer(),
-            _ => panic!("invalid buffer"),
-        };
-        for i in 0..param.len() {
-            send[i] = param[i];
-        }
+        let dma_tx_buffer = dma_tx_buffer();
+        dma_tx_buffer[..param.len()].copy_from_slice(param);
+
+        let ptr = dma_tx_buffer as *const _;
+        let slice: &[u8] = unsafe { alloc::slice::from_raw_parts::<u8>(ptr, param.len()) };
 
         self.write(
             SpiDataMode::Single,
             Command::Command8(0x02, SpiDataMode::Single),
             Address::Address24(cmd.into() as u32, SpiDataMode::Single),
             0,
-            &send,
+            &slice,
         )
         .map_err(|_| anyhow::format_err!("spi dma error"))?
         .wait()
@@ -132,41 +132,36 @@ where
 
         Ok(())
     }
-    fn write_pixels(&mut self, chunk: &[u8]) -> Result<()> {
-        let send = send_buffer();
-        send[..chunk.len()].copy_from_slice(chunk);
+    fn write_pixels(&mut self, framebuffer: &[u8]) -> Result<()> {
+        let chunks = framebuffer.chunks(32000);
 
-        let _ = self
-            .write(
+        for chunk in chunks {
+            let dma_tx_buffer = dma_tx_buffer();
+            dma_tx_buffer[..chunk.len()].copy_from_slice(chunk);
+
+            let ptr = dma_tx_buffer as *const _;
+            let slice: &[u8] = unsafe { alloc::slice::from_raw_parts::<u8>(ptr, chunk.len()) };
+
+            self.write(
                 SpiDataMode::Quad,
                 Command::Command8(0x12, SpiDataMode::Single),
                 Address::Address24(0x3C00, SpiDataMode::Quad),
                 0,
-                &send,
+                &slice,
             )
+            .map_err(|_| anyhow::format_err!("spi dma error"))?
+            .wait()
             .map_err(|_| anyhow::format_err!("spi dma error"))?;
+        }
 
         Ok(())
     }
 }
 
-fn send_buffer() -> &'static mut [u8; 32000] {
+#[cfg(feature = "dma")]
+#[allow(static_mut_refs)]
+fn dma_tx_buffer() -> &'static mut [u8; 32000] {
     static mut BUFFER: [u8; 32000] = [0u8; 32000];
-    unsafe { &mut BUFFER }
-}
-
-fn four_buffer() -> &'static mut [u8; 4] {
-    static mut BUFFER: [u8; 4] = [0u8; 4];
-    unsafe { &mut BUFFER }
-}
-
-fn one_buffer() -> &'static mut [u8; 1] {
-    static mut BUFFER: [u8; 1] = [0u8; 1];
-    unsafe { &mut BUFFER }
-}
-
-fn zero_buffer() -> &'static mut [u8; 1] {
-    static mut BUFFER: [u8; 1] = [0u8; 1];
     unsafe { &mut BUFFER }
 }
 
@@ -299,24 +294,6 @@ where
         Ok(())
     }
 
-    pub fn flush_full(&mut self) -> Result<()> {
-        self.dirty.clear();
-
-        let size = self.size();
-        self.set_address_window(16, 0, 16 + size.width as u16 - 1, size.height as u16 - 1)?;
-
-        let chunks = self.buf.chunks(32000);
-
-        let mut len = 0;
-        for chunk in chunks {
-            self.spi.write_pixels(&chunk)?;
-            len += 1;
-        }
-
-        log::info!("flush_full wrote {} chunks", len);
-        Ok(())
-    }
-
     pub fn flush_dirty(&mut self) -> Result<()> {
         while let Some((start, end)) = self.dirty.pop() {
             self.flush_clip(start, end)?;
@@ -356,6 +333,20 @@ where
 
         //log::info!("flushed");
 
+        Ok(())
+    }
+}
+impl<D, SPI, RST> Display for RM690B0<D, SPI, RST>
+where
+    D: DelayNs,
+    SPI: SpiWrite,
+    RST: OutputPin,
+{
+    fn flush(&mut self) -> Result<()> {
+        self.dirty.clear();
+        let size = self.size();
+        self.set_address_window(16, 0, 16 + size.width as u16 - 1, size.height as u16 - 1)?;
+        self.spi.write_pixels(&self.buf)?;
         Ok(())
     }
 }
@@ -420,9 +411,9 @@ where
         end.x += end.x % 2;
         end.x += end.x % 2;
 
-        //self.dirty.push((start, end));
-        //self.flush_dirty().ok();
-        self.flush_full().ok();
+        self.dirty.push((start, end));
+        self.flush_dirty()?;
+
         Ok(())
     }
 }

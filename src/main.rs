@@ -3,10 +3,11 @@
 
 extern crate alloc;
 
-use core::fmt::Write;
 use embedded_graphics::{
     draw_target::{DrawTarget, DrawTargetExt},
+    geometry::Point,
     pixelcolor::{Rgb565, Rgb888, RgbColor},
+    prelude::*,
 };
 use embedded_hal::delay::DelayNs;
 use esp_backtrace as _;
@@ -25,8 +26,6 @@ use esp_hal::{
     },
     system::SystemControl,
 };
-
-use embedded_term::Console;
 
 #[global_allocator]
 static ALLOCATOR: esp_alloc::EspHeap = esp_alloc::EspHeap::empty();
@@ -71,7 +70,7 @@ fn main() -> ! {
         let data2 = io.pins.gpio16;
         let data3 = io.pins.gpio12;
 
-        let spi = Spi::new_half_duplex(peripherals.SPI3, 300.MHz(), SpiMode::Mode0, &clocks)
+        let spi = Spi::new_half_duplex(peripherals.SPI3, 100.MHz(), SpiMode::Mode0, &clocks)
             .with_pins(
                 Some(sclk),
                 Some(data0),
@@ -94,42 +93,60 @@ fn main() -> ! {
     display.reset();
     display.init().expect("error initializing display");
 
+    //flip(delay, display);
+    console(delay, display);
+    unreachable!();
+}
+
+fn console<D: DrawTarget<Color = Rgb565> + OriginDimensions + rm690b0::Display, T: DelayNs>(
+    mut delay: T,
+    mut display: D,
+) {
+    use alloc::fmt::Write;
+    use embedded_term::Console;
+
+    let mut i = 0;
+
     let converted = display.color_converted::<Rgb888>();
     let mut console = Console::on_frame_buffer(converted);
 
-    let mut i = 0;
     loop {
         console
             .write_str(&alloc::format!("HELLO WORLD RUST {} \n ", i))
             .unwrap();
 
-        console.inner.borrow_mut.;
-            i += 1;
-        //delay.delay_millis(100);
+        i += 1;
     }
-    //let mut flip = false;
-    //loop {
-    //    use embedded_graphics::{
-    //        pixelcolor::Rgb565,
-    //        prelude::*,
-    //        primitives::{PrimitiveStyleBuilder, Rectangle},
-    //    };
+}
 
-    //    // Rectangle with red 3 pixel wide stroke and green fill with the top left corner at (30, 20) and
-    //    // a size of (10, 15)
-    //    let style = PrimitiveStyleBuilder::new()
-    //        .fill_color(match flip {
-    //            true => Rgb565::GREEN,
-    //            false => Rgb565::BLUE,
-    //        })
-    //        .build();
+fn flip<D: DrawTarget<Color = Rgb565> + OriginDimensions + rm690b0::Display, T: DelayNs>(
+    mut delay: T,
+    mut display: D,
+) {
+    let mut flip = false;
+    loop {
+        use embedded_graphics::{
+            pixelcolor::Rgb565,
+            prelude::*,
+            primitives::{PrimitiveStyleBuilder, Rectangle},
+        };
 
-    //    Rectangle::new(Point::new(0, 0), display.size())
-    //        .into_styled(style)
-    //        .draw(&mut display)
-    //        .ok();
-    //    flip = !flip;
-    //    //display.flush_full().ok();
-    //    delay.delay_millis(500);
-    //}
+        // Rectangle with red 3 pixel wide stroke and green fill with the top left corner at (30, 20) and
+        // a size of (10, 15)
+        let style = PrimitiveStyleBuilder::new()
+            .fill_color(match flip {
+                true => Rgb565::GREEN,
+                false => Rgb565::BLUE,
+            })
+            .build();
+
+        Rectangle::new(Point::new(0, 0), display.size())
+            .into_styled(style)
+            .draw(&mut display)
+            .ok();
+        flip = !flip;
+
+        display.flush().ok();
+        delay.delay_ms(16);
+    }
 }

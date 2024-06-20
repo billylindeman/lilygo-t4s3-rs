@@ -11,7 +11,7 @@ dma = []
 
 [dependencies]
 anyhow = { version = "1.0.86", default-features = false }
-embedded-graphics = "0.7"
+embedded-graphics = "0.8"
 embedded-hal = "1.0.0"
 embedded-term = { path = "../embedded-term", features = ["log"] }
 esp-alloc = "0.4.0"
@@ -30,6 +30,7 @@ esp-println = { version = "0.9.1", features = ["esp32s3", "log"] }
 log = "0.4.21"
 lazy_static = { version = "1.4.0", features = ["spin_no_std"] }
 embedded-plots = "0.2.0"
+embedded-canvas = "0.3.1"
 
 [profile.dev]
 # Rust debug is too slow.
