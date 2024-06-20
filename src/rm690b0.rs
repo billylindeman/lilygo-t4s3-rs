@@ -68,6 +68,7 @@ pub trait SpiWrite {
     fn write_pixels(&mut self, chunk: &[u8]) -> Result<()>;
 }
 
+#[cfg(not(feature = "dma"))]
 impl<SPI> SpiWrite for SPI
 where
     SPI: esp_hal::spi::master::HalfDuplexReadWrite,
@@ -96,6 +97,77 @@ where
         .map_err(|_| anyhow::format_err!("spi error"))?;
         Ok(())
     }
+}
+
+#[cfg(feature = "dma")]
+impl<'d, T, C, M, DmaMode> SpiWrite for SpiDma<'d, T, C, M, DmaMode>
+where
+    T: esp_hal::spi::master::InstanceDma<C::Tx<'d>, C::Rx<'d>>,
+    C: esp_hal::dma::ChannelTypes,
+    C::P: esp_hal::dma::SpiPeripheral,
+    M: esp_hal::spi::IsHalfDuplex,
+    DmaMode: esp_hal::Mode,
+{
+    fn write_command<CMD: Copy + Into<u16>>(&mut self, cmd: CMD, param: &[u8]) -> Result<()> {
+        let send: &mut [u8] = match param.len() {
+            0 => zero_buffer(),
+            1 => one_buffer(),
+            4 => four_buffer(),
+            _ => panic!("invalid buffer"),
+        };
+        for i in 0..param.len() {
+            send[i] = param[i];
+        }
+
+        self.write(
+            SpiDataMode::Single,
+            Command::Command8(0x02, SpiDataMode::Single),
+            Address::Address24(cmd.into() as u32, SpiDataMode::Single),
+            0,
+            &send,
+        )
+        .map_err(|_| anyhow::format_err!("spi dma error"))?
+        .wait()
+        .map_err(|_| anyhow::format_err!("spi dma error"))?;
+
+        Ok(())
+    }
+    fn write_pixels(&mut self, chunk: &[u8]) -> Result<()> {
+        let send = send_buffer();
+        send[..chunk.len()].copy_from_slice(chunk);
+
+        let _ = self
+            .write(
+                SpiDataMode::Quad,
+                Command::Command8(0x12, SpiDataMode::Single),
+                Address::Address24(0x3C00, SpiDataMode::Quad),
+                0,
+                &send,
+            )
+            .map_err(|_| anyhow::format_err!("spi dma error"))?;
+
+        Ok(())
+    }
+}
+
+fn send_buffer() -> &'static mut [u8; 32000] {
+    static mut BUFFER: [u8; 32000] = [0u8; 32000];
+    unsafe { &mut BUFFER }
+}
+
+fn four_buffer() -> &'static mut [u8; 4] {
+    static mut BUFFER: [u8; 4] = [0u8; 4];
+    unsafe { &mut BUFFER }
+}
+
+fn one_buffer() -> &'static mut [u8; 1] {
+    static mut BUFFER: [u8; 1] = [0u8; 1];
+    unsafe { &mut BUFFER }
+}
+
+fn zero_buffer() -> &'static mut [u8; 1] {
+    static mut BUFFER: [u8; 1] = [0u8; 1];
+    unsafe { &mut BUFFER }
 }
 
 pub struct RM690B0<D, SPI, RST>
@@ -233,7 +305,7 @@ where
         let size = self.size();
         self.set_address_window(16, 0, 16 + size.width as u16 - 1, size.height as u16 - 1)?;
 
-        let chunks = self.buf.chunks(64);
+        let chunks = self.buf.chunks(32000);
 
         let mut len = 0;
         for chunk in chunks {
@@ -261,7 +333,7 @@ where
             16 + end.y as u16 - 1,
         )?;
 
-        let mut chunk = Vec::with_capacity(64);
+        let mut chunk = Vec::with_capacity(32000);
         let size = self.size();
 
         for y in start.y..end.y {
@@ -270,9 +342,9 @@ where
                 chunk.push(self.buf[idx]);
                 chunk.push(self.buf[idx + 1]);
 
-                if chunk.len() >= 64 {
+                if chunk.len() >= 32000 {
                     self.spi.write_pixels(&chunk)?;
-                    chunk = Vec::with_capacity(64);
+                    chunk = Vec::with_capacity(32000);
                 }
             }
         }
@@ -350,6 +422,7 @@ where
 
         //self.dirty.push((start, end));
         //self.flush_dirty().ok();
+        self.flush_full().ok();
         Ok(())
     }
 }

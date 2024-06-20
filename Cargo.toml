@@ -5,6 +5,10 @@ authors = ["Billy Lindeman <billylindeman@gmail.com>"]
 edition = "2021"
 license = "MIT OR Apache-2.0"
 
+[features]
+default = ["dma"]
+dma = []
+
 [dependencies]
 anyhow = { version = "1.0.86", default-features = false }
 embedded-graphics = "0.7"
