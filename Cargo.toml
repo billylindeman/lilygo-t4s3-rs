@@ -4,6 +4,7 @@ version = "0.1.0"
 authors = ["Billy Lindeman <billylindeman@gmail.com>"]
 edition = "2021"
 license = "MIT OR Apache-2.0"
+#resolver= "2"
 
 [features]
 default = ["dma"]
@@ -31,6 +32,11 @@ log = "0.4.21"
 lazy_static = { version = "1.4.0", features = ["spin_no_std"] }
 embedded-plots = "0.2.0"
 embedded-canvas = "0.3.1"
+embedded-gfx = { path = "../embedded-gfx" }
+nalgebra = {version = "0.32.3", default-features = false, features = [ "libm" ]  }
+num-traits = { version = "0.2", default-features = false, features = ['libm'] }
+load_stl = { path = "../embedded-gfx/load_stl" }
+
 
 [profile.dev]
 # Rust debug is too slow.

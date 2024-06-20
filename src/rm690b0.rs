@@ -411,8 +411,8 @@ where
         end.x += end.x % 2;
         end.x += end.x % 2;
 
-        self.dirty.push((start, end));
-        self.flush_dirty()?;
+        //self.dirty.push((start, end));
+        //self.flush_dirty()?;
 
         Ok(())
     }
