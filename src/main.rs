@@ -114,8 +114,9 @@ fn console<D: DrawTarget<Color = Rgb565> + OriginDimensions + rm690b0::Display, 
         console
             .write_str(&alloc::format!("HELLO WORLD RUST {} \n ", i))
             .unwrap();
-
         i += 1;
+
+        delay.delay_ms(500);
     }
 }
 
