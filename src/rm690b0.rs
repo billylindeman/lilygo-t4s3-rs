@@ -1,9 +1,18 @@
+//! RM690B0 Display Driver for esp-hal
+//! Billy Lindeman <billylindeman@gmail.com>
+//!
+//! This is a display driver for the RM690B0 controller chip
+//! on Lilygo T4S3 ESP32S3 w/ 2.41 AMOLED Display
+//!
+//! This controller utilizes SPI for Data and QSPI for Pixel Data
+//! This driver supports both normal SPI mode as well as DMA
+//! It provides an embedded_graphics::DrawTarget implementation for rendering
+
 use alloc::vec;
 use alloc::vec::Vec;
 use anyhow::Result;
 use embedded_graphics::{
-    draw_target::DrawTarget, geometry::OriginDimensions, pixelcolor::Rgb565, prelude::*,
-    primitives::Rectangle, Pixel,
+    draw_target::DrawTarget, geometry::OriginDimensions, pixelcolor::Rgb565, prelude::*, Pixel,
 };
 use embedded_hal::delay::DelayNs;
 use embedded_hal::digital::OutputPin;
@@ -12,13 +21,15 @@ use esp_hal::spi::{
     SpiDataMode, SpiMode,
 };
 
-const RM690B0_MADCTL_MY: u8 = 0x80;
-const RM690B0_MADCTL_MX: u8 = 0x40;
-const RM690B0_MADCTL_MV: u8 = 0x20;
-const RM690B0_MADCTL_ML: u8 = 0x10;
-const RM690B0_MADCTL_RGB: u8 = 0x00;
-const RM690B0_MADCTL_MH: u8 = 0x04;
-const RM690B0_MADCTL_BGR: u8 = 0x08;
+pub enum MemoryAccessControlFlags {
+    MY = 0x80,
+    MX = 0x40,
+    MV = 0x20,
+    ML = 0x10,
+    BGR = 0x08,
+    MH = 0x04,
+    RGB = 0x00,
+}
 
 #[derive(Debug, Clone, Copy)]
 pub enum DisplayCommand {
@@ -133,9 +144,7 @@ where
         Ok(())
     }
     fn write_pixels(&mut self, framebuffer: &[u8]) -> Result<()> {
-        let chunks = framebuffer.chunks(32000);
-
-        for chunk in chunks {
+        for chunk in framebuffer.chunks(32000) {
             let dma_tx_buffer = dma_tx_buffer();
             dma_tx_buffer[..chunk.len()].copy_from_slice(chunk);
 
@@ -248,7 +257,9 @@ where
 
         self.spi.write_command(
             DisplayCommand::MemoryAccessControl,
-            &[RM690B0_MADCTL_RGB | RM690B0_MADCTL_MV | RM690B0_MADCTL_MX],
+            &[MemoryAccessControlFlags::RGB as u8
+                | MemoryAccessControlFlags::MV as u8
+                | MemoryAccessControlFlags::MX as u8],
         )?;
 
         Ok(())
