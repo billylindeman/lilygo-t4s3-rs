@@ -241,7 +241,8 @@ fn three_dimension<
         //blahaj.set_position(0.0, 0.7 + (moving_parameter * 3.4).sin() * 0.2, 0.0);
 
         teapot.set_attitude(-PI / 2.0, moving_parameter * 1.0, 0.0);
-        teapot.set_scale(0.2 + 0.1 * (moving_parameter * 5.0).sin());
+        //teapot.set_scale(0.2 + 0.1 * (moving_parameter * 5.0).sin());
+        teapot.set_scale(0.5);
 
         //perf.add_measurement("setup");
 

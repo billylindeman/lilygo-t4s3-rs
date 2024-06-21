@@ -149,8 +149,6 @@ where
                 0,
                 &slice,
             )
-            .map_err(|_| anyhow::format_err!("spi dma error"))?
-            .wait()
             .map_err(|_| anyhow::format_err!("spi dma error"))?;
         }
 
