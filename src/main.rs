@@ -20,11 +20,13 @@ use esp_hal::{
     peripherals::Peripherals,
     prelude::*,
     psram,
+    rtc_cntl::Rtc,
     spi::{
         master::{prelude::*, Spi},
         SpiMode,
     },
     system::SystemControl,
+    timer,
 };
 
 #[global_allocator]
@@ -49,6 +51,7 @@ fn main() -> ! {
 
     let clocks = ClockControl::max(system.clock_control).freeze();
     let delay = Delay::new(&clocks);
+    let rtc = Rtc::new(peripherals.LPWR, None);
 
     esp_println::logger::init_logger_from_env();
 
@@ -95,7 +98,7 @@ fn main() -> ! {
 
     //flip(delay, display);
     //console(delay, display);
-    three_dimension(delay, display);
+    three_dimension(delay, display, rtc);
     unreachable!();
 }
 
@@ -106,6 +109,7 @@ fn three_dimension<
 >(
     mut delay: T,
     mut display: D,
+    mut rtc: Rtc,
 ) {
     use alloc::vec::Vec;
     use core::f32::consts::PI;
@@ -122,8 +126,8 @@ fn three_dimension<
     // ----------------- CUT HERE -----------------
     //
     let ground_vertices = {
-        let step = 1.0;
-        let nsteps = 10;
+        let step = 0.5;
+        let nsteps = 20;
 
         let mut vertices = Vec::new();
         for i in 0..nsteps {
@@ -148,21 +152,10 @@ fn three_dimension<
     });
     ground.set_color(Rgb565::new(0, 255, 0));
 
-    //let mut suzanne = K3dMesh::new(embed_stl!("src/models/Suzanne.stl"));
-    //uzanne.set_render_mode(RenderMode::Lines);
-    //suzanne.set_scale(2.0);
-    //suzanne.set_color(Rgb565::CSS_RED);
-
-    let mut teapot = K3dMesh::new(embed_stl!("src/models/Teapot_low.stl"));
+    let mut teapot = K3dMesh::new(embed_stl!("src/models/benchy.stl"));
     teapot.set_render_mode(embedded_gfx::mesh::RenderMode::Lines);
     teapot.set_position(0.0, 0.0, 0.0);
     teapot.set_color(Rgb565::CSS_WHITE);
-
-    //let mut blahaj = K3dMesh::new(embed_stl!("src/models/blahaj.stl"));
-    //blahaj.set_color(Rgb565::new(105 >> 3, 150 >> 2, 173 >> 3));
-    //blahaj.set_render_mode(RenderMode::SolidLightDir(nalgebra::Vector3::new(
-    //    -1.0, 0.0, 0.0,
-    //)));
 
     let size = display.size();
     let mut engine = K3dengine::new(size.width as u16, size.height as u16);
@@ -170,21 +163,16 @@ fn three_dimension<
     engine.camera.set_target(Point3::new(0.0, 0.0, 0.0));
     engine.camera.set_fovy(PI / 4.0);
 
-    //let mut perf = PerformanceCounter::new();
-    //perf.only_fps(true);
-
     let mut moving_parameter: f32 = 0.0;
 
     log::info!("starting main loop");
     let mut player_pos = Point3::new(-10.0, 2.0, 0.0);
     let mut player_dir = 0.0f32;
     let mut player_head = 0.0f32;
-    loop {
-        //let fbuf = buffers.swap_framebuffer();
 
-        //let ft = perf.get_frametime();
-        //let dt = ft as f32 / 1_000_000.0;
-        let dt = 0.1f32;
+    let mut dt = 0.1;
+    loop {
+        let start_time = rtc.get_time_ms();
 
         //perf.start_of_frame();
 
@@ -242,15 +230,15 @@ fn three_dimension<
 
         teapot.set_attitude(-PI / 2.0, moving_parameter * 1.0, 0.0);
         //teapot.set_scale(0.2 + 0.1 * (moving_parameter * 5.0).sin());
-        teapot.set_scale(0.5);
+        teapot.set_scale(0.1);
 
         //perf.add_measurement("setup");
 
-        display.clear(Rgb565::CSS_BLACK).unwrap(); // 2.2ms
+        display.clear(Rgb565::BLACK).unwrap(); // 2.2ms
 
         //perf.add_measurement("clear");
         //engine.render([&ground, &teapot, &suzanne, &blahaj], |p| draw(p, fbuf));
-        engine.render([&ground, &teapot], |p| draw::draw(p, &mut display));
+        engine.render([&teapot], |p| draw::draw(p, &mut display));
 
         //perf.add_measurement("render");
 
@@ -260,7 +248,7 @@ fn three_dimension<
 
         //perf.discard_measurement();
 
-        moving_parameter += 0.3 * dt;
+        moving_parameter += 0.5 * dt;
 
         //
         // ----------------- CUT HERE -----------------
@@ -273,8 +261,19 @@ fn three_dimension<
         //perf.print();
 
         //info!("-> {}", perf.get_text());
+        let render_time = rtc.get_time_ms();
 
         display.flush().ok();
+
+        let display_time = rtc.get_time_ms();
+        dt = (display_time - start_time) as f32 / 1000f32;
+
+        log::info!(
+            "render_time = {}, display_time={}ms dt={}",
+            render_time - start_time,
+            display_time - render_time,
+            dt
+        );
         //delay.delay_ms(8);
     }
 }

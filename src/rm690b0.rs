@@ -142,14 +142,15 @@ where
             let ptr = dma_tx_buffer as *const _;
             let slice: &[u8] = unsafe { alloc::slice::from_raw_parts::<u8>(ptr, chunk.len()) };
 
-            self.write(
-                SpiDataMode::Quad,
-                Command::Command8(0x12, SpiDataMode::Single),
-                Address::Address24(0x3C00, SpiDataMode::Quad),
-                0,
-                &slice,
-            )
-            .map_err(|_| anyhow::format_err!("spi dma error"))?;
+            let _ = self
+                .write(
+                    SpiDataMode::Quad,
+                    Command::Command8(0x12, SpiDataMode::Single),
+                    Address::Address24(0x3C00, SpiDataMode::Quad),
+                    0,
+                    &slice,
+                )
+                .map_err(|_| anyhow::format_err!("spi dma error"))?;
         }
 
         Ok(())
@@ -341,7 +342,7 @@ where
     RST: OutputPin,
 {
     fn flush(&mut self) -> Result<()> {
-        self.dirty.clear();
+        //self.dirty.clear();
         let size = self.size();
         self.set_address_window(16, 0, 16 + size.width as u16 - 1, size.height as u16 - 1)?;
         self.spi.write_pixels(&self.buf)?;
@@ -375,24 +376,24 @@ where
     {
         let size = self.size();
 
-        let mut start = Point::new(size.width as i32, size.height as i32);
-        let mut end = Point::zero();
+        //let mut start = Point::new(size.width as i32, size.height as i32);
+        //let mut end = Point::zero();
 
         for pixel in pixels {
             let Pixel(point, color) = pixel;
 
-            if point.x <= start.x {
-                start.x = point.x
-            }
-            if point.y <= start.y {
-                start.y = point.y
-            }
-            if point.x >= end.x {
-                end.x = point.x
-            }
-            if point.y >= end.y {
-                end.y = point.y
-            }
+            //if point.x <= start.x {
+            //    start.x = point.x
+            //}
+            //if point.y <= start.y {
+            //    start.y = point.y
+            //}
+            //if point.x >= end.x {
+            //    end.x = point.x
+            //}
+            //if point.y >= end.y {
+            //    end.y = point.y
+            //}
 
             let idx = ((point.x + (point.y * size.width as i32)) * 2) as usize;
 
@@ -404,13 +405,24 @@ where
         }
 
         // column addresses must be divisible 2
-        start.x -= start.x % 2;
-        start.y -= start.x % 2;
-        end.x += end.x % 2;
-        end.x += end.x % 2;
+        //start.x -= start.x % 2;
+        //start.y -= start.x % 2;
+        //end.x += end.x % 2;
+        //end.x += end.x % 2;
 
         //self.dirty.push((start, end));
         //self.flush_dirty()?;
+
+        Ok(())
+    }
+
+    fn clear(&mut self, color: Self::Color) -> Result<(), Self::Error> {
+        let [a, b] = color.to_be_bytes();
+
+        for i in (0..self.buf.len()).step_by(2) {
+            self.buf[i] = a;
+            self.buf[i + 1] = b;
+        }
 
         Ok(())
     }
