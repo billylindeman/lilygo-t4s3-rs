@@ -3,4 +3,5 @@
 
 extern crate alloc;
 
+pub mod cst226;
 pub mod rm690b0;
