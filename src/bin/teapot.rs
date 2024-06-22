@@ -38,7 +38,7 @@ fn init_psram_heap() {
     }
 }
 
-pub mod rm690b0;
+use lilygo_t4s3::rm690b0;
 
 #[entry]
 fn main() -> ! {
@@ -83,7 +83,7 @@ fn main() -> ! {
                 Some(cs),
             )
             .with_dma(dma_channel.configure(
-                false,
+                true,
                 &mut tx_descriptors,
                 &mut rx_descriptors,
                 DmaPriority::Priority0,
@@ -96,11 +96,11 @@ fn main() -> ! {
     display.reset();
     display.init().expect("error initializing display");
 
-    render_3d_benchy(delay, display, rtc);
+    render_3d_teapot(delay, display, rtc);
     unreachable!();
 }
 
-fn render_3d_benchy<
+fn render_3d_teapot<
     D: DrawTarget<Color = Rgb565, Error = E> + OriginDimensions + rm690b0::Display,
     T: DelayNs,
     E: core::fmt::Debug,
@@ -119,10 +119,10 @@ fn render_3d_benchy<
     use num_traits::Float;
     log::info!("creating 3d scene");
 
-    let mut benchy = K3dMesh::new(embed_stl!("src/models/benchy.stl"));
-    benchy.set_render_mode(embedded_gfx::mesh::RenderMode::Lines);
-    benchy.set_position(0.0, 0.0, 0.0);
-    benchy.set_color(Rgb565::CSS_WHITE);
+    let mut teapot = K3dMesh::new(embed_stl!("src/bin/mesh/Teapot_low.stl"));
+    teapot.set_render_mode(embedded_gfx::mesh::RenderMode::Lines);
+    teapot.set_position(0.0, 2.0, 0.0);
+    teapot.set_color(Rgb565::CSS_WHITE);
 
     let size = display.size();
     let mut engine = K3dengine::new(size.width as u16, size.height as u16);
@@ -147,11 +147,11 @@ fn render_3d_benchy<
             + nalgebra::Vector3::new(player_dir.cos(), player_head.sin(), player_dir.sin());
         engine.camera.set_target(lookat);
 
-        benchy.set_attitude(-PI / 2.0, moving_parameter * 1.0, 0.0);
-        benchy.set_scale(0.1);
+        teapot.set_attitude(-PI / 2.0, moving_parameter * 1.0, 0.0);
+        teapot.set_scale(0.5);
 
         display.clear(Rgb565::BLACK).unwrap(); // 2.2ms
-        engine.render([&benchy], |p| draw::draw(p, &mut display));
+        engine.render([&teapot], |p| draw::draw(p, &mut display));
 
         moving_parameter += 0.5 * dt;
         let render_time = rtc.get_time_ms();
