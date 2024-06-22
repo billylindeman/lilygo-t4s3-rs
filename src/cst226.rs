@@ -176,9 +176,9 @@ where
         let mut index = 0;
         for i in 0..active_touch_len {
             //report.id[i] = buffer[index] >> 4;
-            let id = buf[index] >> 4;
+            let _id = buf[index] >> 4;
             //report.status[i] = buffer[index] & 0x0F;
-            let status = buf[index] & 0x0F;
+            let _status = buf[index] & 0x0F;
             //report.x[i] = (uint16_t)((buffer[index + 1] << 4) | ((buffer[index + 3] >> 4) & 0x0F));
             let x: u16 =
                 ((buf[index + 1] as u16) << 4) | ((buf[index + 3] as u16) >> 4) as u16 & 0x0F;
