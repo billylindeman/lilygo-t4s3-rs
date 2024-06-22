@@ -5,9 +5,9 @@ extern crate alloc;
 
 use embedded_graphics::{
     draw_target::{DrawTarget, DrawTargetExt},
-    geometry::Point,
     pixelcolor::{Rgb565, Rgb888, RgbColor},
     prelude::*,
+    text::Text,
 };
 use embedded_hal::delay::DelayNs;
 use esp_backtrace as _;
@@ -15,7 +15,7 @@ use esp_hal::{
     clock::ClockControl,
     delay::Delay,
     dma::{Dma, DmaPriority},
-    dma_buffers, dma_descriptors,
+    dma_descriptors,
     gpio::{Io, Level, Output},
     peripherals::Peripherals,
     prelude::*,
@@ -96,22 +96,19 @@ fn main() -> ! {
     display.reset();
     display.init().expect("error initializing display");
 
-    //flip(delay, display);
-    //console(delay, display);
-    three_dimension(delay, display, rtc);
+    render_3d_benchy(delay, display, rtc);
     unreachable!();
 }
 
-fn three_dimension<
+fn render_3d_benchy<
     D: DrawTarget<Color = Rgb565, Error = E> + OriginDimensions + rm690b0::Display,
     T: DelayNs,
     E: core::fmt::Debug,
 >(
     mut delay: T,
     mut display: D,
-    mut rtc: Rtc,
+    rtc: Rtc,
 ) {
-    use alloc::vec::Vec;
     use core::f32::consts::PI;
     use embedded_gfx::draw;
     use embedded_gfx::mesh::Geometry;
@@ -122,40 +119,10 @@ fn three_dimension<
     use num_traits::Float;
     log::info!("creating 3d scene");
 
-    //
-    // ----------------- CUT HERE -----------------
-    //
-    let ground_vertices = {
-        let step = 0.5;
-        let nsteps = 20;
-
-        let mut vertices = Vec::new();
-        for i in 0..nsteps {
-            for j in 0..nsteps {
-                vertices.push([
-                    (i as f32 - nsteps as f32 / 2.0) * step,
-                    0.0,
-                    (j as f32 - nsteps as f32 / 2.0) * step,
-                ]);
-            }
-        }
-
-        vertices
-    };
-
-    let mut ground = K3dMesh::new(Geometry {
-        vertices: &ground_vertices,
-        faces: &[],
-        colors: &[],
-        lines: &[],
-        normals: &[],
-    });
-    ground.set_color(Rgb565::new(0, 255, 0));
-
-    let mut teapot = K3dMesh::new(embed_stl!("src/models/benchy.stl"));
-    teapot.set_render_mode(embedded_gfx::mesh::RenderMode::Lines);
-    teapot.set_position(0.0, 0.0, 0.0);
-    teapot.set_color(Rgb565::CSS_WHITE);
+    let mut benchy = K3dMesh::new(embed_stl!("src/models/benchy.stl"));
+    benchy.set_render_mode(embedded_gfx::mesh::RenderMode::Lines);
+    benchy.set_position(0.0, 0.0, 0.0);
+    benchy.set_color(Rgb565::CSS_WHITE);
 
     let size = display.size();
     let mut engine = K3dengine::new(size.width as u16, size.height as u16);
@@ -166,55 +133,13 @@ fn three_dimension<
     let mut moving_parameter: f32 = 0.0;
 
     log::info!("starting main loop");
-    let mut player_pos = Point3::new(-10.0, 2.0, 0.0);
-    let mut player_dir = 0.0f32;
-    let mut player_head = 0.0f32;
+    let player_pos = Point3::new(-10.0, 2.0, 0.0);
+    let player_dir = 0.0f32;
+    let player_head = 0.0f32;
 
     let mut dt = 0.1;
     loop {
         let start_time = rtc.get_time_ms();
-
-        //perf.start_of_frame();
-
-        let walking_speed = 5.0 * dt;
-        let turning_speed = 0.6 * dt;
-
-        //let keys = p.keyboard.read_keys();
-        //for key in keys {
-        //    match key {
-        //        keyboard::Key::Semicolon => {
-        //            player_pos.x += player_dir.cos() * walking_speed;
-        //            player_pos.z += player_dir.sin() * walking_speed;
-        //        }
-        //        keyboard::Key::Period => {
-        //            player_pos.x -= player_dir.cos() * walking_speed;
-        //            player_pos.z -= player_dir.sin() * walking_speed;
-        //        }
-        //        keyboard::Key::Slash => {
-        //            player_pos.x += (player_dir + PI / 2.0).cos() * walking_speed;
-        //            player_pos.z += (player_dir + PI / 2.0).sin() * walking_speed;
-        //        }
-        //        keyboard::Key::Comma => {
-        //            player_pos.x -= (player_dir + PI / 2.0).cos() * walking_speed;
-        //            player_pos.z -= (player_dir + PI / 2.0).sin() * walking_speed;
-        //        }
-
-        //        keyboard::Key::D => {
-        //            player_dir += turning_speed;
-        //        }
-        //        keyboard::Key::A => {
-        //            player_dir -= turning_speed;
-        //        }
-
-        //        keyboard::Key::E => {
-        //            player_head += turning_speed;
-        //        }
-        //        keyboard::Key::S => {
-        //            player_head -= turning_speed;
-        //        }
-        //        _ => {}
-        //    }
-        //}
 
         engine.camera.set_position(player_pos);
 
@@ -222,112 +147,28 @@ fn three_dimension<
             + nalgebra::Vector3::new(player_dir.cos(), player_head.sin(), player_dir.sin());
         engine.camera.set_target(lookat);
 
-        //suzanne.set_attitude(-PI / 2.0, moving_parameter * 2.0, 0.0);
-        //suzanne.set_position(0.0, 0.7 + (moving_parameter * 3.4).sin() * 0.2, 10.0);
-
-        //blahaj.set_attitude(-PI / 2.0, moving_parameter * 2.0, 0.0);
-        //blahaj.set_position(0.0, 0.7 + (moving_parameter * 3.4).sin() * 0.2, 0.0);
-
-        teapot.set_attitude(-PI / 2.0, moving_parameter * 1.0, 0.0);
-        //teapot.set_scale(0.2 + 0.1 * (moving_parameter * 5.0).sin());
-        teapot.set_scale(0.1);
-
-        //perf.add_measurement("setup");
+        benchy.set_attitude(-PI / 2.0, moving_parameter * 1.0, 0.0);
+        benchy.set_scale(0.1);
 
         display.clear(Rgb565::BLACK).unwrap(); // 2.2ms
-
-        //perf.add_measurement("clear");
-        //engine.render([&ground, &teapot, &suzanne, &blahaj], |p| draw(p, fbuf));
-        engine.render([&teapot], |p| draw::draw(p, &mut display));
-
-        //perf.add_measurement("render");
-
-        //Text::new(perf.get_text(), Point::new(20, 20), text_style)
-        //    .draw(fbuf)
-        //    .unwrap();
-
-        //perf.discard_measurement();
+        engine.render([&benchy], |p| draw::draw(p, &mut display));
 
         moving_parameter += 0.5 * dt;
-
-        //
-        // ----------------- CUT HERE -----------------
-        //
-
-        //buffers.send_framebuffer();
-
-        //perf.add_measurement("draw");
-
-        //perf.print();
-
-        //info!("-> {}", perf.get_text());
         let render_time = rtc.get_time_ms();
 
-        display.flush().ok();
+        let fps = (1.0f32 / dt) as u32;
+
+        display.flush().expect("could not flush display");
 
         let display_time = rtc.get_time_ms();
         dt = (display_time - start_time) as f32 / 1000f32;
 
         log::info!(
-            "render_time = {}, display_time={}ms dt={}",
+            "render_time = {}, display_time={}ms, dt={}, fps={} ",
             render_time - start_time,
             display_time - render_time,
-            dt
+            dt,
+            fps,
         );
-        //delay.delay_ms(8);
-    }
-}
-
-fn console<D: DrawTarget<Color = Rgb565> + OriginDimensions + rm690b0::Display, T: DelayNs>(
-    mut delay: T,
-    mut display: D,
-) {
-    use alloc::fmt::Write;
-    use embedded_term::Console;
-
-    let mut i = 0;
-
-    let converted = display.color_converted::<Rgb888>();
-    let mut console = Console::on_frame_buffer(converted);
-
-    loop {
-        console
-            .write_str(&alloc::format!("HELLO WORLD RUST {} \n ", i))
-            .unwrap();
-        i += 1;
-
-        delay.delay_ms(500);
-    }
-}
-
-fn flip<D: DrawTarget<Color = Rgb565> + OriginDimensions + rm690b0::Display, T: DelayNs>(
-    mut delay: T,
-    mut display: D,
-) {
-    let mut flip = false;
-    loop {
-        use embedded_graphics::{
-            pixelcolor::Rgb565,
-            prelude::*,
-            primitives::{PrimitiveStyleBuilder, Rectangle},
-        };
-
-        // Rectangle with red 3 pixel wide stroke and green fill with the top left corner at (30, 20) and
-        // a size of (10, 15)
-        let style = PrimitiveStyleBuilder::new()
-            .fill_color(match flip {
-                true => Rgb565::GREEN,
-                false => Rgb565::BLUE,
-            })
-            .build();
-
-        Rectangle::new(Point::new(0, 0), display.size())
-            .into_styled(style)
-            .draw(&mut display)
-            .ok();
-        flip = !flip;
-
-        display.flush().ok();
-        delay.delay_ms(8);
     }
 }

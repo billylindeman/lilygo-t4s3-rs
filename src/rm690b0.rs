@@ -81,6 +81,10 @@ pub trait SpiWrite {
 
 pub trait Display {
     fn flush(&mut self) -> Result<()>;
+
+    fn flush_dirty(&mut self) -> Result<()> {
+        unimplemented!();
+    }
 }
 
 #[cfg(not(feature = "dma"))]
@@ -151,15 +155,16 @@ where
             let ptr = dma_tx_buffer as *const _;
             let slice: &[u8] = unsafe { alloc::slice::from_raw_parts::<u8>(ptr, chunk.len()) };
 
-            let _ = self
-                .write(
-                    SpiDataMode::Quad,
-                    Command::Command8(0x12, SpiDataMode::Single),
-                    Address::Address24(0x3C00, SpiDataMode::Quad),
-                    0,
-                    &slice,
-                )
-                .map_err(|_| anyhow::format_err!("spi dma error"))?;
+            self.write(
+                SpiDataMode::Quad,
+                Command::Command8(0x12, SpiDataMode::Single),
+                Address::Address24(0x3C00, SpiDataMode::Quad),
+                0,
+                &slice,
+            )
+            .map_err(|_| anyhow::format_err!("spi dma error"))?
+            .wait()
+            .map_err(|_| anyhow::format_err!("spi dma error"))?;
         }
 
         Ok(())
@@ -183,7 +188,6 @@ where
     spi: SPI,
     rst: RST,
     buf: Vec<u8>,
-    dirty: Vec<(Point, Point)>,
 }
 impl<D, SPI, RST> RM690B0<D, SPI, RST>
 where
@@ -193,14 +197,12 @@ where
 {
     pub fn new(delay: D, spi: SPI, rst: RST) -> Self {
         let buf = vec![0; 540000];
-        let dirty = Vec::new();
 
         Self {
             delay,
             spi,
             rst,
             buf,
-            dirty,
         }
     }
 
@@ -304,47 +306,39 @@ where
         Ok(())
     }
 
-    pub fn flush_dirty(&mut self) -> Result<()> {
-        while let Some((start, end)) = self.dirty.pop() {
-            self.flush_clip(start, end)?;
-        }
+    //fn flush_clip(&mut self, start: Point, end: Point) -> Result<()> {
+    //    self.set_address_window(
+    //        16 + start.x as u16,
+    //        16 + start.y as u16,
+    //        16 + end.x as u16 - 1,
+    //        16 + end.y as u16 - 1,
+    //    )?;
 
-        Ok(())
-    }
+    //    let mut chunk = Vec::with_capacity(32000);
+    //    let size = self.size();
 
-    fn flush_clip(&mut self, start: Point, end: Point) -> Result<()> {
-        self.set_address_window(
-            16 + start.x as u16,
-            16 + start.y as u16,
-            16 + end.x as u16 - 1,
-            16 + end.y as u16 - 1,
-        )?;
+    //    for y in start.y..end.y {
+    //        for x in start.x..end.x {
+    //            let idx = ((x + (y * size.width as i32)) * 2) as usize;
+    //            chunk.push(self.buf[idx]);
+    //            chunk.push(self.buf[idx + 1]);
 
-        let mut chunk = Vec::with_capacity(32000);
-        let size = self.size();
+    //            if chunk.len() >= 32000 {
+    //                self.spi.write_pixels(&chunk)?;
+    //                chunk = Vec::with_capacity(32000);
+    //            }
+    //        }
+    //    }
 
-        for y in start.y..end.y {
-            for x in start.x..end.x {
-                let idx = ((x + (y * size.width as i32)) * 2) as usize;
-                chunk.push(self.buf[idx]);
-                chunk.push(self.buf[idx + 1]);
+    //    if chunk.len() > 0 {
+    //        //log::info!("last chunk {}", chunk.len());
+    //        self.spi.write_pixels(&chunk)?;
+    //    }
 
-                if chunk.len() >= 32000 {
-                    self.spi.write_pixels(&chunk)?;
-                    chunk = Vec::with_capacity(32000);
-                }
-            }
-        }
+    //    //log::info!("flushed");
 
-        if chunk.len() > 0 {
-            //log::info!("last chunk {}", chunk.len());
-            self.spi.write_pixels(&chunk)?;
-        }
-
-        //log::info!("flushed");
-
-        Ok(())
-    }
+    //    Ok(())
+    //}
 }
 impl<D, SPI, RST> Display for RM690B0<D, SPI, RST>
 where
@@ -359,6 +353,14 @@ where
         self.spi.write_pixels(&self.buf)?;
         Ok(())
     }
+
+    //fn flush_dirty(&mut self) -> Result<()> {
+    //    while let Some((start, end)) = self.dirty.pop() {
+    //        self.flush_clip(start, end)?;
+    //    }
+
+    //    Ok(())
+    //}
 }
 
 impl<D, SPI, RST> OriginDimensions for RM690B0<D, SPI, RST>
@@ -422,19 +424,14 @@ where
         //end.x += end.x % 2;
 
         //self.dirty.push((start, end));
-        //self.flush_dirty()?;
 
         Ok(())
     }
 
     fn clear(&mut self, color: Self::Color) -> Result<(), Self::Error> {
-        let [a, b] = color.to_be_bytes();
-
-        for i in (0..self.buf.len()).step_by(2) {
-            self.buf[i] = a;
-            self.buf[i + 1] = b;
-        }
-
+        let color = u16::from_be(color.into_storage());
+        let (_, body, _) = unsafe { self.buf.align_to_mut::<u16>() };
+        body.fill(color);
         Ok(())
     }
 }
