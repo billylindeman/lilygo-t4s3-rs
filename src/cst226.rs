@@ -15,8 +15,11 @@ enum Registers {
 
 pub enum Command {
     CommandModeEnter = 0x01,
-    ReadChecksum = 0xFC,
+    ReadChipCheckcode = 0xFC,
     ReadResolution = 0xF8,
+    ReadChipTypeAndProjectId = 0x04,
+    ReadFirmwareVersionAndChecksum = 0x08,
+    CommandModeExit = 0x09,
 }
 
 const CST226SE_SLAVE_ADDRESS: u8 = 0x5A;
@@ -58,7 +61,7 @@ where
                 CST226SE_SLAVE_ADDRESS,
                 &[Registers::Command as u8, Command::CommandModeEnter as u8],
             )
-            .expect("could not write register");
+            .expect("cst226: could not enter command mode");
         self.delay.delay_ms(20);
 
         let mut buf: [u8; 4] = [0u8; 4];
@@ -66,11 +69,13 @@ where
         self.i2c
             .write_read(
                 CST226SE_SLAVE_ADDRESS,
-                &[Registers::Command as u8, Command::ReadChecksum as u8],
+                &[Registers::Command as u8, Command::ReadChipCheckcode as u8],
                 &mut buf,
             )
-            .expect("could not read checksum");
-        log::info!("checksum {:x?}", u32::from_le_bytes(buf));
+            .expect("cst226: could not read checkcode");
+
+        let checkcode = u32::from_le_bytes(buf);
+        log::info!("cst226: checkcode {:x?}", checkcode);
 
         let mut buf: [u8; 4] = [0u8; 4];
         self.i2c
@@ -79,17 +84,71 @@ where
                 &[Registers::Command as u8, Command::ReadResolution as u8],
                 &mut buf,
             )
-            .expect("could not read checksum");
+            .expect("cst227: could not read resolution");
 
         let res_x: u16 = u16::from_le_bytes([buf[0], buf[1]]);
         let res_y: u16 = u16::from_le_bytes([buf[2], buf[3]]);
 
-        log::info!("res_x={}, res_y={}", res_x, res_y);
+        log::info!("cst226: res_x={}, res_y={}", res_x, res_y);
 
         //todo
         // read chiptype
-        // read fwversion
-        // read checksum
+
+        let mut buf: [u8; 4] = [0u8; 4];
+        self.i2c
+            .write_read(
+                CST226SE_SLAVE_ADDRESS,
+                &[
+                    Registers::Command as u8,
+                    Command::ReadChipTypeAndProjectId as u8,
+                ],
+                &mut buf,
+            )
+            .expect("cst226: could not read chip_type and project_id");
+
+        let project_id: u16 = u16::from_le_bytes([buf[0], buf[1]]);
+        let chip_type: u16 = u16::from_le_bytes([buf[2], buf[3]]);
+
+        log::info!(
+            "cst226: project_id={:x}, chiptype={:x}",
+            project_id,
+            chip_type
+        );
+
+        let mut buf: [u8; 8] = [0u8; 8];
+        self.i2c
+            .write_read(
+                CST226SE_SLAVE_ADDRESS,
+                &[
+                    Registers::Command as u8,
+                    Command::ReadFirmwareVersionAndChecksum as u8,
+                ],
+                &mut buf,
+            )
+            .expect("cst226: could not read firmware_version and checksum");
+
+        let firmware_version: u32 = u32::from_le_bytes([buf[0], buf[1], buf[2], buf[3]]);
+        let checksum: u32 = u32::from_le_bytes([buf[4], buf[5], buf[6], buf[7]]);
+
+        log::info!(
+            "cst226: firmware_version={:x}, checksum={:x}",
+            firmware_version,
+            checksum
+        );
+
+        if firmware_version == 0xA5A5A5A5 {
+            anyhow::bail!("cst226: chip ic does not have firmware");
+        }
+        if (checkcode & 0xFFFF0000) != 0xCACA0000 {
+            anyhow::bail!("cst226: chip ic does not have firmware");
+        }
+
+        self.i2c
+            .write(
+                CST226SE_SLAVE_ADDRESS,
+                &[Registers::Command as u8, Command::CommandModeExit as u8],
+            )
+            .expect("cst226: could not exit command mode");
 
         Ok(())
     }
