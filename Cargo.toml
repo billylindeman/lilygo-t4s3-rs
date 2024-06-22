@@ -7,11 +7,6 @@ license = "MIT OR Apache-2.0"
 #resolver= "2"
 
 
-
-[[bin]]
-name = "benchy"
-path = "src/bin/benchy.rs"
-
 [features]
 default = ["dma"]
 dma = []
