@@ -7,6 +7,7 @@ use embedded_graphics::{
     draw_target::{DrawTarget, DrawTargetExt},
     pixelcolor::{Rgb565, Rgb888, RgbColor},
     prelude::*,
+    primitives::Circle,
     text::Text,
 };
 use embedded_hal::{delay::DelayNs, digital::InputPin};
@@ -39,7 +40,8 @@ fn init_psram_heap() {
     }
 }
 
-use lilygo_t4s3::{cst226, rm690b0};
+use lilygo_t4s3::cst226::{self, TouchEvent, TouchProvider};
+use lilygo_t4s3::rm690b0::{self, Display};
 
 #[entry]
 fn main() -> ! {
@@ -114,7 +116,44 @@ fn main() -> ! {
     touch.init().expect("could not initialize touch controller");
 
     loop {
-        //log::info!("reading touch");
+        use embedded_graphics::{
+            pixelcolor::Rgb565,
+            prelude::*,
+            primitives::{PrimitiveStyleBuilder, Rectangle},
+        };
+
+        let size = display.size();
+
+        display
+            .clear(Rgb565::BLACK)
+            .expect("could not clear display");
+
+        if let Some(touches) = touch.poll() {
+            for touch in touches {
+                if let TouchEvent::TouchDown(y, x, pressure) = touch {
+                    // Rectangle with red 3 pixel wide stroke and green fill with the top left corner at (30, 20) and
+                    // a size of (10, 15)
+                    let style = PrimitiveStyleBuilder::new()
+                        .fill_color(Rgb565::WHITE)
+                        .build();
+
+                    let center_delta = pressure / 2;
+
+                    Circle::new(
+                        Point::new(
+                            (x - center_delta) as i32,
+                            ((size.height as u16 - y) - center_delta) as i32,
+                        ),
+                        pressure as u32,
+                    )
+                    .into_styled(style)
+                    .draw(&mut display)
+                    .ok();
+                }
+            }
+        }
+
+        display.flush().ok();
     }
     //unreachable!();
 }

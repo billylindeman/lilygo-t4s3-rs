@@ -1,11 +1,12 @@
+use alloc::vec::Vec;
 use embedded_hal::{delay::DelayNs, digital::OutputPin, i2c::I2c};
 
 pub enum TouchEvent {
-    TouchDown(u16, u16),
+    TouchDown(u16, u16, u16),
 }
 
 pub trait TouchProvider {
-    fn touch() -> Option<TouchEvent>;
+    fn poll(&mut self) -> Option<Vec<TouchEvent>>;
 }
 
 enum Registers {
@@ -151,5 +152,59 @@ where
             .expect("cst226: could not exit command mode");
 
         Ok(())
+    }
+}
+
+impl<I2C, RST, D> TouchProvider for CST226<I2C, RST, D>
+where
+    I2C: I2c,
+    RST: OutputPin,
+    D: DelayNs,
+{
+    fn poll(&mut self) -> Option<Vec<TouchEvent>> {
+        let mut buf: [u8; 26] = [0; 26];
+        self.i2c
+            .write_read(CST226SE_SLAVE_ADDRESS, &[Registers::Status as u8], &mut buf)
+            .expect("cst226: could not read checkcode");
+
+        let active_touch_len = buf[5] & 0x7F;
+
+        // log::info!("detected active_touches {}", active_touch_len);
+        let mut touches: alloc::vec::Vec<TouchEvent> =
+            alloc::vec::Vec::with_capacity(active_touch_len as usize);
+
+        let mut index = 0;
+        for i in 0..active_touch_len {
+            //report.id[i] = buffer[index] >> 4;
+            let id = buf[index] >> 4;
+            //report.status[i] = buffer[index] & 0x0F;
+            let status = buf[index] & 0x0F;
+            //report.x[i] = (uint16_t)((buffer[index + 1] << 4) | ((buffer[index + 3] >> 4) & 0x0F));
+            let x: u16 =
+                ((buf[index + 1] as u16) << 4) | ((buf[index + 3] as u16) >> 4) as u16 & 0x0F;
+            //report.y[i] = (uint16_t)((buffer[index + 2] << 4) | (buffer[index + 3] & 0x0F));
+            let y: u16 = ((buf[index + 2] as u16) << 4) | buf[index + 3] as u16 & 0x0F;
+
+            //report.pressure[i] = buffer[index + 4];
+            let pressure = buf[index + 4];
+            //index = (i == 0) ?  (index + 7) :  (index + 5);
+            index = if i == 0 { index + 7 } else { index + 5 };
+
+            //log::info!(
+            //    "touch active id={}, status={}, x={}, y={}, pressure={}",
+            //    id,
+            //    status,
+            //    x,
+            //    y,
+            //    pressure
+            //);
+
+            touches.push(TouchEvent::TouchDown(x, y, pressure as u16));
+        }
+
+        match touches.is_empty() {
+            true => None,
+            false => Some(touches),
+        }
     }
 }
