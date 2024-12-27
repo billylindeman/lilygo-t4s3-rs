@@ -5,7 +5,9 @@ This repository contains a rust starter pack for the [lilygo t4 s3](https://lily
 
 It has a display driver, touch screen driver, and a few example programs leveraging the embedded-graphics ecosystem to render 3d models.
 
-
+```
+cargo run --release --example benchy
+```
 
 https://github.com/user-attachments/assets/9aac4bda-3c89-4d56-80e1-fd373002b7ca
 
